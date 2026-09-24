@@ -1,0 +1,7 @@
+{
+    "input_scale": 0.020609354600310326,
+    "input_zero_point": -20,
+    "output_scale": 0.00394488824531436,
+    "output_zero_point": -128,
+    "target_multiplier": 100.0
+}

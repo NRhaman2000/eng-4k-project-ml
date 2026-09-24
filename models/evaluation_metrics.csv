@@ -1,0 +1,2 @@
+test_cell,num_cycles,mae_soh_percent,rmse_soh_percent,max_error_percent,r2_score
+B0018,132,3.7391,4.5673,13.3599,0.6495

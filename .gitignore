@@ -1,0 +1,38 @@
+# macOS System Artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Python & Virtual Environments
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# Data Files (Keep structure via .gitkeep, do NOT push large raw datasets)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Intermediate Model Files (Allow final exports, ignore intermediate training checkpoints)
+models/saved/*
+!models/saved/.gitkeep
+models/tflite/*
+!models/tflite/.gitkeep
+models/c_headers/*
+!models/c_headers/.gitkeep
+
+# VS Code Personal State (Track shared settings, ignore user history)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.pkg

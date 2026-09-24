@@ -1,0 +1,12 @@
+# --- Core Numerical, Data & Science ---
+numpy>=1.23.5,<2.0.0
+pandas>=2.0.0,<2.2.0
+scipy>=1.10.0,<1.13.0
+matplotlib>=3.7.0,<3.9.0
+
+# --- Deep Learning & Embedded TFLite Conversion ---
+tensorflow>=2.13.0,<2.16.0
+
+# --- Interactive Notebooks & Linting ---
+jupyter>=1.0.0
+ipykernel>=6.20.0
