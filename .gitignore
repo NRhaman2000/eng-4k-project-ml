@@ -36,3 +36,4 @@ models/c_headers/*
 !.vscode/settings.json
 !.vscode/extensions.json
 *.pkg
+dashboard/backend/telemetry.db
