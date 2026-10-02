@@ -10,7 +10,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-
 const tableHeader = {
   border: "1px solid #ddd",
   padding: "10px",
@@ -22,7 +21,6 @@ const tableCell = {
   border: "1px solid #ddd",
   padding: "10px",
 };
-
 
 function App() {
   const [telemetry, setTelemetry] = useState(null);
@@ -41,16 +39,18 @@ function App() {
 
       setTelemetry(data);
 
-      setChartHistory((prev) => [
-        ...prev,
-        {
-          time: new Date(data.timestamp).toLocaleTimeString(),
-          cell1: data.cells[0].voltage,
-          cell2: data.cells[1].voltage,
-          cell3: data.cells[2].voltage,
-          cell4: data.cells[3].voltage,
-        },
-      ].slice(-30));
+      setChartHistory((prev) =>
+        [
+          ...prev,
+          {
+            time: new Date(data.timestamp).toLocaleTimeString(),
+            cell1: data.cells[0].voltage,
+            cell2: data.cells[1].voltage,
+            cell3: data.cells[2].voltage,
+            cell4: data.cells[3].voltage,
+          },
+        ].slice(-30)
+      );
     };
 
     ws.onerror = (error) => {
@@ -109,7 +109,7 @@ function App() {
     >
       <h1
         style={{
-          marginBottom: "24px",
+          marginBottom: "28px",
         }}
       >
         Fault-Tolerant Active BMS Dashboard
@@ -117,103 +117,181 @@ function App() {
 
       <div
         style={{
-          display: "flex",
-          gap: "24px",
-          flexWrap: "wrap",
-          marginBottom: "30px",
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(170px, 1fr))",
+          gap: "20px",
+          marginBottom: "36px",
+          alignItems: "start",
         }}
       >
         <div>
-          <strong>System Status:</strong>{" "}
-          {telemetry.system_state}
+          <strong>System Status:</strong>
+          <div
+            style={{
+              marginTop: "6px",
+              minHeight: "24px",
+              fontWeight:
+                telemetry.system_state === "FAULT_DETECTED"
+                  ? "bold"
+                  : "normal",
+              color:
+                telemetry.system_state === "FAULT_DETECTED"
+                  ? "red"
+                  : "inherit",
+            }}
+          >
+            {telemetry.system_state}
+          </div>
         </div>
 
         <div>
-          <strong>Pack Voltage:</strong>{" "}
-          {telemetry.pack_voltage.toFixed(3)} V
+          <strong>Pack Voltage:</strong>
+          <div
+            style={{
+              marginTop: "6px",
+              minHeight: "24px",
+            }}
+          >
+            {telemetry.pack_voltage.toFixed(3)} V
+          </div>
         </div>
 
         <div>
-          <strong>Pack Current:</strong>{" "}
-          {telemetry.pack_current.toFixed(2)} A
+          <strong>Pack Current:</strong>
+          <div
+            style={{
+              marginTop: "6px",
+              minHeight: "24px",
+              color:
+                telemetry.fault.active &&
+                telemetry.fault.type === "OVERCURRENT"
+                  ? "red"
+                  : "inherit",
+              fontWeight:
+                telemetry.fault.active &&
+                telemetry.fault.type === "OVERCURRENT"
+                  ? "bold"
+                  : "normal",
+            }}
+          >
+            {telemetry.pack_current.toFixed(2)} A
+          </div>
         </div>
 
         <div>
-          <strong>Balancing:</strong>{" "}
-          {telemetry.balancing ? "ON" : "OFF"}
+          <strong>Balancing:</strong>
+          <div
+            style={{
+              marginTop: "6px",
+              minHeight: "24px",
+            }}
+          >
+            {telemetry.balancing ? "ON" : "OFF"}
+          </div>
         </div>
 
         <div>
-          <strong>Fault:</strong>{" "}
-<span
-  style={{
-    color: telemetry.fault.active ? "red" : "inherit",
-    fontWeight: telemetry.fault.active ? "bold" : "normal",
-  }}
->
-  {telemetry.fault.active
-    ? `${telemetry.fault.type} on Cell ${telemetry.fault.cell}`
-    : "No active fault"}
-</span>
+          <strong>Fault:</strong>
+          <div
+            style={{
+              marginTop: "6px",
+              minHeight: "48px",
+              color: telemetry.fault.active ? "red" : "inherit",
+              fontWeight: telemetry.fault.active ? "bold" : "normal",
+            }}
+          >
+            {telemetry.fault.active
+              ? telemetry.fault.cell
+                ? `${telemetry.fault.type} on Cell ${telemetry.fault.cell}`
+                : telemetry.fault.type
+              : "No active fault"}
+          </div>
         </div>
       </div>
 
-      <h2>Cell Telemetry</h2>
+      <h2
+        style={{
+          textAlign: "center",
+          marginBottom: "20px",
+        }}
+      >
+        Cell Telemetry
+      </h2>
 
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
           gap: "20px",
-          marginBottom: "40px",
+          marginBottom: "46px",
         }}
       >
-        {telemetry.cells.map((cell) => (
-          <div
-            key={cell.id}
-            style={{
-  border:
-    telemetry.fault.active &&
-    telemetry.fault.cell === cell.id
-      ? "3px solid red"
-      : "1px solid #ccc",
-  borderRadius: "12px",
-  padding: "20px",
-  background:
-    telemetry.fault.active &&
-    telemetry.fault.cell === cell.id
-      ? "#ffe5e5"
-      : "white",
-}}
-          >
-            <h3>Cell {cell.id}</h3>
+        {telemetry.cells.map((cell) => {
+          const isFaultedCell =
+            telemetry.fault.active &&
+            telemetry.fault.cell === cell.id;
 
-            <p>
-              Voltage:{" "}
-              <strong>{cell.voltage.toFixed(3)} V</strong>
-            </p>
+          return (
+            <div
+              key={cell.id}
+              style={{
+                border: isFaultedCell
+                  ? "3px solid red"
+                  : "1px solid #ccc",
+                borderRadius: "12px",
+                padding: "20px",
+                minHeight: "200px",
+                background: isFaultedCell
+                  ? "#ffe5e5"
+                  : "white",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+              }}
+            >
+              <h3
+                style={{
+                  textAlign: "center",
+                  marginBottom: "20px",
+                }}
+              >
+                Cell {cell.id}
+              </h3>
 
-            <p>
-              Temperature:{" "}
-              <strong>
-                {cell.temperature.toFixed(1)} °C
-              </strong>
-            </p>
+              <p>
+                Voltage:{" "}
+                <strong>{cell.voltage.toFixed(3)} V</strong>
+              </p>
 
-            <p>
-              State of Health:{" "}
-              <strong>{cell.soh.toFixed(1)}%</strong>
-            </p>
-          </div>
-        ))}
+              <p>
+                Temperature:{" "}
+                <strong>
+                  {cell.temperature.toFixed(1)} °C
+                </strong>
+              </p>
+
+              <p>
+                State of Health:{" "}
+                <strong>{cell.soh.toFixed(1)}%</strong>
+              </p>
+            </div>
+          );
+        })}
       </div>
 
-      <h2>Real-Time Cell Voltage</h2>
+      <h2
+        style={{
+          textAlign: "center",
+          marginBottom: "20px",
+        }}
+      >
+        Real-Time Cell Voltage
+      </h2>
 
       <div
         style={{
           width: "100%",
-          height: "400px",
+          height: "420px",
           marginBottom: "50px",
         }}
       >
@@ -223,7 +301,10 @@ function App() {
 
             <XAxis dataKey="time" />
 
-            <YAxis domain={[3.5, 3.9]} />
+            <YAxis
+              domain={[2.2, 3.9]}
+              tickCount={6}
+            />
 
             <Tooltip />
 
@@ -260,7 +341,14 @@ function App() {
         </ResponsiveContainer>
       </div>
 
-      <h2>Historical Telemetry</h2>
+      <h2
+        style={{
+          textAlign: "center",
+          marginBottom: "20px",
+        }}
+      >
+        Historical Telemetry
+      </h2>
 
       <div
         style={{
@@ -316,7 +404,21 @@ function App() {
                     {row.pack_voltage.toFixed(3)} V
                   </td>
 
-                  <td style={tableCell}>
+                  <td
+                    style={{
+                      ...tableCell,
+                      color:
+                        row.fault_active &&
+                        row.fault_type === "OVERCURRENT"
+                          ? "red"
+                          : "inherit",
+                      fontWeight:
+                        row.fault_active &&
+                        row.fault_type === "OVERCURRENT"
+                          ? "bold"
+                          : "normal",
+                    }}
+                  >
                     {row.pack_current.toFixed(2)} A
                   </td>
 
@@ -340,13 +442,37 @@ function App() {
                     {row.balancing ? "ON" : "OFF"}
                   </td>
 
-                  <td style={tableCell}>
+                  <td
+                    style={{
+                      ...tableCell,
+                      color: row.fault_active
+                        ? "red"
+                        : "inherit",
+                      fontWeight: row.fault_active
+                        ? "bold"
+                        : "normal",
+                    }}
+                  >
                     {row.fault_active
-                      ? row.fault_type || "Active"
+                      ? row.fault_cell
+                        ? `${row.fault_type} / Cell ${row.fault_cell}`
+                        : row.fault_type
                       : "None"}
                   </td>
 
-                  <td style={tableCell}>
+                  <td
+                    style={{
+                      ...tableCell,
+                      color:
+                        row.system_state === "FAULT_DETECTED"
+                          ? "red"
+                          : "inherit",
+                      fontWeight:
+                        row.system_state === "FAULT_DETECTED"
+                          ? "bold"
+                          : "normal",
+                    }}
+                  >
                     {row.system_state}
                   </td>
                 </tr>
