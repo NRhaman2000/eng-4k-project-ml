@@ -145,9 +145,16 @@ function App() {
 
         <div>
           <strong>Fault:</strong>{" "}
-          {telemetry.fault.active
-            ? `${telemetry.fault.type} on Cell ${telemetry.fault.cell}`
-            : "No active fault"}
+<span
+  style={{
+    color: telemetry.fault.active ? "red" : "inherit",
+    fontWeight: telemetry.fault.active ? "bold" : "normal",
+  }}
+>
+  {telemetry.fault.active
+    ? `${telemetry.fault.type} on Cell ${telemetry.fault.cell}`
+    : "No active fault"}
+</span>
         </div>
       </div>
 
@@ -165,11 +172,19 @@ function App() {
           <div
             key={cell.id}
             style={{
-              border: "1px solid #ccc",
-              borderRadius: "12px",
-              padding: "20px",
-              background: "white",
-            }}
+  border:
+    telemetry.fault.active &&
+    telemetry.fault.cell === cell.id
+      ? "3px solid red"
+      : "1px solid #ccc",
+  borderRadius: "12px",
+  padding: "20px",
+  background:
+    telemetry.fault.active &&
+    telemetry.fault.cell === cell.id
+      ? "#ffe5e5"
+      : "white",
+}}
           >
             <h3>Cell {cell.id}</h3>
 
