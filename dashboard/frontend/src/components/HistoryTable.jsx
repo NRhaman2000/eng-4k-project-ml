@@ -20,7 +20,17 @@ export default function HistoryTable({ backend = BACKEND }) {
 
   return (
     <section className="panel" aria-label="Historical telemetry">
-      <h2>Historical Telemetry (SQLite)</h2>
+      <div className="chart-head">
+        <h2>Historical Telemetry (SQLite)</h2>
+        <div className="seg" aria-label="Export CSV">
+          <a className="button" href={`${backend}/api/export/telemetry.csv`} download>Export telemetry CSV</a>
+          <a className="button" href={`${backend}/api/export/events.csv`} download>Export events CSV</a>
+        </div>
+      </div>
+      <p className="muted small">
+        Exports contain every stored row, oldest first. Each row is labelled with its source
+        (MOCK = synthetic, HARDWARE = measured); empty cells mean "not reported".
+      </p>
       {error && <p className="warn-text small">History unavailable: {error}</p>}
       <div className="table-wrap">
         <table className="table">
