@@ -27,7 +27,7 @@ FIELDS = [
     ("seq", "required", "int", "", (0, None), "frame counter, +1 per frame (detects loss)"),
     ("mcu_ms", "required", "int", "ms", (0, None), "MCU uptime when the frame was built"),
     ("state", "required", "enum", "", sorted(STATES), "firmware safety state"),
-    ("src", "optional", "str", "", None, "MOCK/SIM/TEST marks synthetic frames; omit on real hardware"),
+    ("src", "optional", "str", "", None, "MOCK, SIM, SIMULATED, SYNTHETIC or TEST marks synthetic frames; omit on real hardware"),
     ("pack", "required", "object", "", None, "pack measurements"),
     ("pack.v", "expected", "number", "V", PACK_PLAUSIBLE["pack_voltage"], "pack (string) voltage"),
     ("pack.i", "expected", "number", "A", PACK_PLAUSIBLE["pack_current"], "pack current (sign convention TBD)"),
@@ -41,7 +41,7 @@ FIELDS = [
     ("cells[].bal", "expected", "bool", "", None, "cell's balancer active"),
     ("cells[].bypass", "expected", "bool", "", None, "cell bypassed / isolated"),
     ("cells[].fault", "expected", "str", "", None, "firmware fault on this cell, null if none"),
-    ("faults", "optional", "array", "", None, "active faults: [{\"type\": str, \"cell\": int|null}]"),
+    ("faults", "optional", "faults", "", None, "active faults: [{\"type\": str, \"cell\": 1-4 or null}]"),
 ]
 KNOWN_TOP = {p for p, *_ in FIELDS if "." not in p and "[" not in p}
 KNOWN_PACK = {p.split(".", 1)[1] for p, *_ in FIELDS if p.startswith("pack.")}
@@ -59,7 +59,7 @@ def _type_ok(kind, value):
         return isinstance(value, str)
     if kind == "object":
         return isinstance(value, dict)
-    if kind.startswith("array"):
+    if kind.startswith("array") or kind == "faults":
         return isinstance(value, list)
     return True
 
@@ -78,6 +78,11 @@ def _judge(kind, rng, value):
             return f"invalid: {value!r} outside [{lo}, {'∞' if hi is None else hi}]"
     if kind == "array[4]" and len(value) != N_CELLS:
         return f"invalid: {len(value)} entries, expected {N_CELLS}"
+    if kind == "faults":  # the dashboard silently ignores entries that are not {"type": str, "cell": int|null}
+        for e in value:
+            if not (isinstance(e, dict) and isinstance(e.get("type"), str)
+                    and (e.get("cell") is None or (isinstance(e["cell"], int) and 1 <= e["cell"] <= N_CELLS))):
+                return f"invalid: entry {e!r} is not {{\"type\": str, \"cell\": 1-{N_CELLS} or null}}"
     return "present"
 
 

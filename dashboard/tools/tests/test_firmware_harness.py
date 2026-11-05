@@ -133,6 +133,40 @@ def test_sequence_gaps_and_slow_rate_warn():
     assert any("sequence" in w for w in r["warnings"]) and any("frame interval" in w for w in r["warnings"])
 
 
+@pytest.mark.parametrize("faults", [["UNDERVOLTAGE"], [{"cell": 2}], [{"type": "OV", "cell": 7}]])
+def test_malformed_fault_entries_are_invalid(faults):
+    r = run(ok_stream(mutate=lambda p: p.update(faults=faults)))
+    assert r["fields"]["faults"]["verdict"] == "INVALID"
+
+
+PROBES = {
+    "mcu_ms null": lambda p: p.update(mcu_ms=None), "mcu_ms '250'": lambda p: p.update(mcu_ms="250"),
+    "mcu_ms 250.5": lambda p: p.update(mcu_ms=250.5), "seq null": lambda p: p.update(seq=None),
+    "state null": lambda p: p.update(state=None), "pack list": lambda p: p.update(pack=[1]),
+    "pack null": lambda p: p.update(pack=None), "v 0.0": lambda p: p.update(v=0.0),
+    "cell id '2'": lambda p: p["cells"][1].update(id="2"), "cell id missing": lambda p: p["cells"][1].pop("id"),
+    "cell v '3.7'": lambda p: p["cells"][0].update(v="3.7"), "cell v true": lambda p: p["cells"][0].update(v=True),
+    "cell v 9.9": lambda p: p["cells"][0].update(v=9.9), "cell bal 1": lambda p: p["cells"][0].update(bal=1),
+    "cell fault 7": lambda p: p["cells"][0].update(fault=7), "faults cell 7": lambda p: p.update(faults=[{"type": "X", "cell": 7}]),
+    "faults 'none'": lambda p: p.update(faults="none"), "faults [str]": lambda p: p.update(faults=["UV"]),
+    "src HARDWARE": lambda p: p.update(src="HARDWARE"), "extra key": lambda p: p.update(fw="1"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(PROBES))
+def test_harness_never_passes_what_the_dashboard_rejects(name):
+    """The harness may be stricter than the lenient dashboard parser, never looser."""
+    from serial_reader import ParseError, parse_line
+    line = fw(1, PROBES[name])
+    try:
+        parse_line(line)
+        dashboard_ok = True
+    except ParseError:
+        dashboard_ok = False
+    harness_ok = run([line])["verdict"] in ("COMPATIBLE", "COMPATIBLE_WITH_WARNINGS")
+    assert dashboard_ok or not harness_ok
+
+
 def test_synthetic_frames_are_flagged():
     r = run([fw(i, src="MOCK") for i in range(5)])
     assert r["synthetic_frames"] == 5 and any("synthetic" in w for w in r["warnings"])

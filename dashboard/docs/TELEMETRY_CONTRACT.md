@@ -20,7 +20,7 @@ setpoint or acknowledgement is ever sent to the MCU.
 | CRC | CRC-32 (IEEE 802.3 / zlib, poly 0x04C11DB7 reflected, init 0xFFFFFFFF, final XOR 0xFFFFFFFF) over the JSON bytes only | ☐ |
 | Line ending | `\n` (a trailing `\r` is tolerated) | ☐ |
 | Max frame size | 4,096 bytes. A typical frame is about 470 bytes, about 16% of link capacity | ☐ |
-| Other output on the same port | none. Debug `printf`, boot banners and so on are counted as non-frame lines and ignored, but they add noise | ☐ |
+| Other output on the same port | none. The dashboard counts any non-frame line (debug `printf`, boot banner, …) as a rejected packet and ignores it; the harness lists them as non-frame lines | ☐ |
 
 Example frame (exactly as sent):
 
@@ -44,7 +44,7 @@ a value.
 | `seq` | required | int |  | 0 to ∞ | frame counter, +1 per frame (detects loss) |
 | `mcu_ms` | required | int | ms | 0 to ∞ | MCU uptime when the frame was built |
 | `state` | required | enum |  | BALANCING, FAULT_DETECTED, ISOLATED, NORMAL | firmware safety state |
-| `src` | optional | str |  |  | MOCK/SIM/TEST marks synthetic frames; omit on real hardware |
+| `src` | optional | str |  |  | MOCK, SIM, SIMULATED, SYNTHETIC or TEST marks synthetic frames; omit on real hardware |
 | `pack` | required | object |  |  | pack measurements |
 | `pack.v` | expected | number | V | 0.0 to 25.0 | pack (string) voltage |
 | `pack.i` | expected | number | A | -200.0 to 200.0 | pack current (sign convention TBD) |
@@ -58,10 +58,19 @@ a value.
 | `cells[].bal` | expected | bool |  |  | cell's balancer active |
 | `cells[].bypass` | expected | bool |  |  | cell bypassed / isolated |
 | `cells[].fault` | expected | str |  |  | firmware fault on this cell, null if none |
-| `faults` | optional | array |  |  | active faults: [{"type": str, "cell": int|null}] |
+| `faults` | optional | faults |  |  | active faults: [{"type": str, "cell": 1-4 or null}] |
 
 Unknown extra fields are ignored by the dashboard and listed by the compatibility
 harness, so adding a field never breaks anything.
+
+**The harness is deliberately stricter than the dashboard.** The dashboard's parser is
+lenient so that a slightly-off frame still shows something. For example it accepts `"250"`
+or `null` for `mcu_ms`, `0.0` for `v`, a non-object or missing `pack` (shown as N/A),
+`"2"` as a cell id, `1`/`0` or `"3.7"` for booleans and numbers, and it ignores
+`faults` entries that are not `{"type", "cell"}` objects. The harness reports all of these
+against the contract, so the firmware can send exactly this format. It never passes a frame
+the dashboard would reject (checked by a test). Its report shows both the contract verdict
+and `accepted_by_dashboard`.
 
 ### Firmware states (`state`)
 

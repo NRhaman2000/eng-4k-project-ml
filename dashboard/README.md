@@ -214,7 +214,7 @@ gitignored.
 
 ```bash
 cd dashboard/backend  && python -m pytest tests -q   # backend: 80 tests
-cd dashboard/tools    && python -m pytest tests -q   # frame, loopback, firmware harness, e2e: 46 tests
+cd dashboard/tools    && python -m pytest tests -q   # frame, loopback, firmware harness, e2e: 69 tests
 cd dashboard/frontend && npm test                     # Vitest + React Testing Library: 27 tests
 cd dashboard/frontend && npm run build && npm run lint   # lint is oxlint (the project's linter)
 cd dashboard/tools    && python run_loopback_test.py --duration 300   # 5-min loopback measurement
@@ -343,7 +343,7 @@ wire time or browser rendering.
 **Measured 2026-11-05, Linux VM on the dev Mac, Python 3.10. SIMULATED (PTY,
 synthetic frames), not hardware:**
 
-| Metric | Result |
+| Metric (SIMULATED) | Result |
 | --- | --- |
 | Frames written / received | 580 / 567 over 150 s (20 more scheduled while the cable was out) |
 | Delivery outside the outage | 100.00 % |
