@@ -18,6 +18,9 @@ sent, not measured on a wire. Hardware integration is not done.
 | `mock_serial_streamer.py` | Sends synthetic 4S frames (`"src":"MOCK"`) at a fixed interval |
 | `loopback_receiver.py` | Receive-only: validates each line, counts failures by kind, never writes to the port |
 | `run_loopback_test.py` | Creates the PTY pair (socat), runs both as separate processes, writes a result JSON |
+| `contract.py` | Provisional field contract as data; `python contract.py` prints the table in `docs/TELEMETRY_CONTRACT.md` |
+| `firmware_harness.py` | Receive-only compatibility report for a serial port or capture file |
+| `measure_e2e.py` | SIMULATED end-to-end latency, delivery and reconnection measurement over a PTY |
 | `tests/` | pytest suite (frame validation, malformed input, receiver counting, short end-to-end run) |
 
 ## Provisional frame v0 (not confirmed by firmware)
