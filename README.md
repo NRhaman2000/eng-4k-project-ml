@@ -251,3 +251,13 @@ python src/export_c_header.py
 
 
 * **Task:** Integrate `models/c_headers/` into STM32CubeIDE / ESP-IDF, initialize the hardware DWT cycle counter, and profile exact sub-millisecond execution time and dynamic memory allocation on the physical board.
+
+---
+
+## Telemetry Dashboard (Software Engineering)
+
+The `dashboard/` folder contains the receive-only host software for the BMS testbed: a Python FastAPI backend that ingests telemetry, validates it and logs it to SQLite, and a React web dashboard that shows live cell voltages, temperatures, pack voltage and current, balancing, fault and isolation state, history, and CSV export. The dashboard only monitors. It sends no commands to the MCU, and all protection decisions remain in the STM32 firmware.
+
+- **Setup, architecture, usage and testing:** see [`dashboard/README.md`](dashboard/README.md).
+- **Current status:** the dashboard runs on synthetic (mock) telemetry and supports a provisional serial interface (JSON frames over UART at 115,200 baud, see [`dashboard/tools/README.md`](dashboard/tools/README.md)), which has been tested only with a pseudo-terminal loopback and synthetic data.
+- **Physical STM32 integration has not yet been verified.** The serial packet format is still provisional until it is confirmed with the firmware team.
