@@ -5,7 +5,8 @@ PROVISIONAL: not yet confirmed by the CE/firmware team.
 One frame per line:   <compact JSON object>*<CRC-32 of the JSON bytes, 8 uppercase hex>\n
 Example:              {"v":0,"seq":12,...}*1A2B3C4D\n
 
-CRC-32 is zlib/IEEE (same polynomial as the STM32G4 hardware CRC unit's default).
+CRC-32 is zlib/IEEE (poly 0x04C11DB7, reflected, init and final XOR 0xFFFFFFFF; check value
+of b"123456789" is 0xCBF43926). The STM32G4 CRC unit needs reversal and final XOR set to match.
 Missing measurements are sent as JSON null, never as invented values.
 """
 import json

@@ -53,7 +53,7 @@ Settings are environment variables:
 | --- | --- | --- |
 | `BMS_TRANSPORT` | `MOCK` | `MOCK` (in-process simulator) or `SERIAL` (serial port). `BMS_SOURCE=HARDWARE` still works as an alias for `SERIAL` |
 | `BMS_SERIAL_DATA_ORIGIN` | `UNVERIFIED` | what SERIAL data is: `UNVERIFIED`, `MEASURED` (set this only when the STM32 is really connected) or `SYNTHETIC` |
-| `BMS_SERIAL_PORT` | `/dev/ttyACM0` | e.g. `/dev/tty.usbmodem1103` on macOS, `COM5` on Windows |
+| `BMS_SERIAL_PORT` | `/dev/ttyACM0` | e.g. `/dev/cu.usbmodem1103` on macOS (use `cu.`, not `tty.`), `COM5` on Windows |
 | `BMS_BAUD` | `115200` | |
 | `BMS_MOCK_SCENARIO` | `demo` | see section 3 |
 | `BMS_MOCK_INTERVAL` | `0.25` | seconds per mock packet (`0.5` halves the speed) |
@@ -87,16 +87,20 @@ not TinyML output. Mock SoC and pack SoH are not reported, so they show N/A.
 
 ## 4. Connecting the STM32 (once the protocol is confirmed)
 
-1. Agree the frame format with CE. The current proposal is in
-   `tools/serial_frame.py` and `tools/README.md`: one JSON line every 250 ms
-   at 115,200 8N1, with a CRC-32 suffix. The legacy `C1=..,T1=..,STATE=..`
-   key=value lines are also accepted.
+1. Agree the frame format with CE. The contract to confirm is in
+   [`docs/TELEMETRY_CONTRACT.md`](docs/TELEMETRY_CONTRACT.md): one JSON line
+   every 250 ms at 115,200 8N1, with a CRC-32 suffix, plus the field list and
+   15 open questions. The legacy `C1=..,T1=..,STATE=..` key=value lines are
+   also accepted.
 2. If the confirmed format differs, change only `tools/serial_frame.py`
    (framing and CRC) and `frame_to_packet()` in `backend/serial_reader.py`
    (field mapping). Nothing else depends on the wire format.
-3. Find the port: `ls /dev/tty.usb*` (macOS) or `ls /dev/ttyACM*` (Linux).
+3. Find the port: `ls /dev/cu.usbmodem*` (macOS) or `ls /dev/ttyACM*` (Linux).
+   On macOS, open the `cu.` device: the `tty.` one can block on open while it waits for carrier detect.
+   Before starting the dashboard, check the firmware's output with the receive-only harness:
+   `python ../tools/firmware_harness.py --port /dev/cu.usbmodem1103 --duration 60` (section 13).
 4. Start, declaring that this port carries real measurements:
-   `BMS_TRANSPORT=SERIAL BMS_SERIAL_DATA_ORIGIN=MEASURED BMS_SERIAL_PORT=/dev/tty.usbmodem1103 BMS_DB_PATH=bench.db python -m uvicorn main:app`.
+   `BMS_TRANSPORT=SERIAL BMS_SERIAL_DATA_ORIGIN=MEASURED BMS_SERIAL_PORT=/dev/cu.usbmodem1103 BMS_DB_PATH=bench.db python -m uvicorn main:app`.
    Without `BMS_SERIAL_DATA_ORIGIN=MEASURED`, serial data is labelled **UNVERIFIED**.
 5. Check `http://127.0.0.1:8000/api/status`. You should see
    `connected: true` and `packets_ok` increasing. If `packets_rejected`
@@ -209,9 +213,9 @@ gitignored.
 ## 9. Tests
 
 ```bash
-cd dashboard/backend  && python -m pytest tests -q   # backend: 68 tests
-cd dashboard/tools    && python -m pytest tests -q   # Phase 0 frame + PTY loopback: 21 tests
-cd dashboard/frontend && npm test                     # Vitest + React Testing Library: 22 tests
+cd dashboard/backend  && python -m pytest tests -q   # backend: 80 tests
+cd dashboard/tools    && python -m pytest tests -q   # frame, loopback, firmware harness, e2e: 69 tests
+cd dashboard/frontend && npm test                     # Vitest + React Testing Library: 27 tests
 cd dashboard/frontend && npm run build && npm run lint   # lint is oxlint (the project's linter)
 cd dashboard/tools    && python run_loopback_test.py --duration 300   # 5-min loopback measurement
 ```
@@ -290,7 +294,7 @@ SERIAL:    serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
 
 ## 12. Known limitations
 
-- **No STM32 testing.** SERIAL transport was exercised only through a PTY with synthetic and unverified test frames, and the frame format is provisional. MEASURED has never been used with real data yet.
+- **No STM32 testing.** Latency and delivery figures in section 13 are SIMULATED. SERIAL transport was exercised only through a PTY with synthetic and unverified test frames, and the frame format is provisional. MEASURED has never been used with real data yet.
 - Mock SoH values are fixed synthetic numbers, not model output. Mock SoC and pack SoH are not reported.
 - Charge-transfer direction is not in schema v0, so it shows as "Not reported by firmware".
 - The warning thresholds are provisional display values. Align them with the firmware's thresholds once known.
@@ -300,3 +304,83 @@ SERIAL:    serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
 - The exports have no date filter yet: they always contain the whole database. Use a fresh `BMS_DB_PATH` per test session.
 - The frontend is JavaScript. A TypeScript migration is deferred until after the MVP.
 - The repo root README's dashboard sections predate this work. This file is the current reference.
+
+## 13. Firmware integration and performance (synthetic until the STM32 is connected)
+
+### 13.1 Checking firmware output against the contract
+
+`tools/firmware_harness.py` is **receive-only**: it opens the port, reads lines,
+and never writes. For every line it reports:
+- contract fit: each field present / null / missing / invalid, plus fields not in the contract
+- framing: CRC ok / missing / mismatch / malformed, non-frame text such as debug prints
+- link: sequence gaps, frame interval from `mcu_ms`, host arrival rate (live port only)
+- dashboard acceptance: whether `backend/serial_reader.py` would ingest the line
+
+```bash
+python tools/firmware_harness.py --port /dev/cu.usbmodem1103 --duration 60 --json-out fw_report.json
+python tools/firmware_harness.py --file capture.txt     # offline, from a saved capture
+```
+
+Verdict and exit code: `COMPATIBLE` 0, `COMPATIBLE_WITH_WARNINGS` 1,
+`INCOMPATIBLE` / `NO_FRAMES` 2. Synthetic frames (`src` = MOCK, SIM, TEST)
+are always called out as not hardware data.
+
+### 13.2 End-to-end measurement (SIMULATED)
+
+`tools/measure_e2e.py` runs the real backend in SERIAL mode on a socat PTY,
+feeds synthetic frames, listens on the WebSocket, and pulls the virtual
+cable once:
+
+```bash
+python tools/measure_e2e.py --duration 150 --outage-at 60 --outage 5 --json-out tools/results/e2e.json
+```
+
+Latency is measured from the serial write to the WebSocket client receiving
+the frame (matched by `seq`, same host clock). It includes parsing,
+validation, the SQLite write and the broadcast. It does not include UART
+wire time or browser rendering.
+
+**Measured 2026-11-05, Linux VM on the dev Mac, Python 3.10. SIMULATED (PTY,
+synthetic frames), not hardware:**
+
+| Metric (SIMULATED) | Result |
+| --- | --- |
+| Frames written / received | 580 / 567 over 150 s (20 more scheduled while the cable was out) |
+| Delivery outside the outage | 100.00 % |
+| Lost frames | 13, all inside the outage window (the cable pull, plus frames sent before the backend reopened the port) |
+| Duplicates / DB rows vs distinct seq | 0 / 567 = 567 |
+| Latency p50 / p95 / p99 / max | 13.5 / 18.2 / 25.4 / 35.7 ms |
+| UART wire time at 115,200 baud | about 41 ms per 470-byte frame (**computed, not measured**); a real link adds this |
+| Disconnect shown on the dashboard | 0.83 s after the cable pull |
+| First frame after replug | 3.19 s (dominated by the backend's 1-5 s retry backoff) |
+
+REQ-SE-01 (display within 500 ms) passes with a wide margin on the loopback.
+It must be re-measured on the STM32 before it can be claimed.
+
+### 13.3 macOS: run everything locally
+
+Not yet run on macOS itself: the commands above were tested on Linux, and the paths below are the macOS equivalents.
+
+```bash
+brew install socat node python@3.11          # skip what you already have
+cd ~/eng-4k-project-ml/dashboard/backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt          # backend + tools + tests
+
+python -m pytest tests -q                    # backend
+cd ../tools && python -m pytest tests -q     # contract, harness, loopback, e2e (uses socat)
+cd ../frontend && npm install && npm test && npm run build && npm run lint
+
+# run the dashboard (two terminals)
+cd ~/eng-4k-project-ml/dashboard/backend && source .venv/bin/activate && python -m uvicorn main:app
+cd ~/eng-4k-project-ml/dashboard/frontend && npm run dev         # open http://localhost:5173
+
+# with the board plugged in (receive-only check first, then the dashboard)
+ls /dev/cu.usbmodem*
+python ../tools/firmware_harness.py --port /dev/cu.usbmodemXXXX --duration 60 --json-out fw_report.json
+BMS_TRANSPORT=SERIAL BMS_SERIAL_PORT=/dev/cu.usbmodemXXXX python -m uvicorn main:app
+```
+
+The dashboard labels serial data **UNVERIFIED** until you add
+`BMS_SERIAL_DATA_ORIGIN=MEASURED`. Only do that once the harness reports the
+board's frames as `COMPATIBLE` (or with understood warnings).
