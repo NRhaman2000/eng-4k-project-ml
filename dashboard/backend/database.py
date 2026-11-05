@@ -5,8 +5,8 @@ NULL where the source did not report them.
 
 Migration never deletes data. Before an old schema is changed, the whole file
 is copied to <db>.backup-<timestamp>.db using SQLite's online backup. Then the
-old table is renamed (v0 to telemetry_legacy, v1 to telemetry_legacy_v1) and
-its row count is checked. If the backup or the check fails, startup stops.
+old table is renamed (v0 to telemetry_legacy, v1/v2 to telemetry_legacy_vN, and an
+old events table to events_legacy_vN) and row counts are checked. If the backup or the check fails, startup stops.
 """
 import json
 import sqlite3
@@ -14,8 +14,8 @@ from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "telemetry.db"
-SCHEMA_VERSION = 2
-LEGACY_TABLES = {0: "telemetry_legacy", 1: "telemetry_legacy_v1"}
+SCHEMA_VERSION = 3
+LEGACY_TABLES = {0: "telemetry_legacy", 1: "telemetry_legacy_v1", 2: "telemetry_legacy_v2"}
 
 
 class MigrationError(RuntimeError):
@@ -23,16 +23,16 @@ class MigrationError(RuntimeError):
 
 CELL_COLS = ["voltage", "temp", "soh", "balancing", "bypassed", "fault"]
 COLUMNS = (
-    ["timestamp", "source", "seq", "mcu_ms", "scenario", "pack_voltage", "pack_current", "soc", "pack_soh"]
+    ["timestamp", "transport", "data_origin", "seq", "mcu_ms", "scenario", "pack_voltage", "pack_current", "soc", "pack_soh"]
     + [f"cell{n}_{c}" for c in CELL_COLS for n in range(1, 5)]
     + ["balancing", "fault_active", "fault_cell", "fault_type", "system_state",
        "invalid_json", "warnings_json"]
 )
-EVENT_COLUMNS = ["timestamp", "source", "seq", "kind", "cell", "detail", "message"]
+EVENT_COLUMNS = ["timestamp", "transport", "data_origin", "seq", "kind", "cell", "detail", "message"]
 
 
 def _sql_type(col):
-    if col in ("timestamp", "source", "scenario", "fault_type", "system_state", "invalid_json",
+    if col in ("timestamp", "transport", "data_origin", "scenario", "fault_type", "system_state", "invalid_json",
                "warnings_json") or col.endswith("_fault"):
         return "TEXT"
     if col in ("seq", "mcu_ms", "fault_cell", "fault_active", "balancing") or col.endswith(("_balancing", "_bypassed")):
@@ -94,6 +94,13 @@ def init_db(path=None):
             if _count(conn, legacy) != before:
                 conn.rollback()
                 raise MigrationError(f"{legacy} row count changed during migration")
+            has_events = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
+            if has_events:  # v2 events lack transport/data_origin: keep them alongside, unchanged
+                ev_before = _count(conn, "events")
+                conn.execute(f"ALTER TABLE events RENAME TO events_legacy_v{version}")
+                if _count(conn, f"events_legacy_v{version}") != ev_before:
+                    raise MigrationError("events row count changed during migration")
         cols = ",\n".join(f"{c} {_sql_type(c)}" for c in COLUMNS)
         conn.execute(f"""CREATE TABLE IF NOT EXISTS telemetry (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,11 +108,14 @@ def init_db(path=None):
         )""")
         conn.execute("""CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL, source TEXT, seq INTEGER,
+            timestamp TEXT NOT NULL, transport TEXT, data_origin TEXT, seq INTEGER,
             kind TEXT NOT NULL, cell INTEGER, detail TEXT, message TEXT
         )""")
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()
+        # WAL: a long CSV export (an open read) must not block the ingestion loop's writes,
+        # or live rows are lost with "database is locked". The setting persists in the file.
+        conn.execute("PRAGMA journal_mode=WAL")
     finally:
         conn.close()
     return backup
@@ -116,7 +126,8 @@ def _row(packet):
     def b(x):
         return None if x is None else int(x)
     values = {
-        "timestamp": packet.timestamp, "source": packet.source, "seq": packet.seq,
+        "timestamp": packet.timestamp, "transport": packet.transport, "data_origin": packet.data_origin,
+        "seq": packet.seq,
         "mcu_ms": packet.mcu_ms, "scenario": packet.scenario,
         "pack_voltage": packet.pack_voltage, "pack_current": packet.pack_current,
         "soc": packet.soc, "pack_soh": packet.pack_soh,

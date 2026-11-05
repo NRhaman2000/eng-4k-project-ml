@@ -4,7 +4,9 @@
 - Units are in the column names: _V volts, _A amps, _C degrees C, _pct percent, _ms ms.
 - Empty cell = not reported (NULL). Nothing is filled in.
 - Booleans are 1/0.
-- Every row has data_origin, so a synthetic value can never pass as a measurement
+- Every row has transport (MOCK = in-process simulator, SERIAL = serial port) and
+  data_origin (SYNTHETIC, MEASURED, or UNVERIFIED = serial data whose origin was
+  not declared), so a synthetic or unverified value can never pass as a measurement
   once the file leaves the dashboard.
 """
 import csv
@@ -14,11 +16,9 @@ import sqlite3
 
 from database import DB_PATH
 
-ORIGIN = {"MOCK": "SYNTHETIC (mock simulator, not measured)", "HARDWARE": "MEASURED (hardware)"}
-
 TELEMETRY_COLUMNS = [
     # (csv header, db column)
-    ("row_id", "id"), ("timestamp_utc", "timestamp"), ("source", "source"), ("data_origin", None),
+    ("row_id", "id"), ("timestamp_utc", "timestamp"), ("transport", "transport"), ("data_origin", "data_origin"),
     ("seq", "seq"), ("mcu_uptime_ms", "mcu_ms"), ("scenario", "scenario"), ("system_state", "system_state"),
     ("pack_voltage_V", "pack_voltage"), ("pack_current_A", "pack_current"),
     ("soc_pct", "soc"), ("pack_soh_pct", "pack_soh"),
@@ -33,7 +33,7 @@ TELEMETRY_COLUMNS = [
 ]
 
 EVENT_COLUMNS = [
-    ("event_id", "id"), ("timestamp_utc", "timestamp"), ("source", "source"), ("data_origin", None),
+    ("event_id", "id"), ("timestamp_utc", "timestamp"), ("transport", "transport"), ("data_origin", "data_origin"),
     ("seq", "seq"), ("kind", "kind"), ("cell", "cell"), ("detail", "detail"), ("message", "message"),
 ]
 
@@ -68,9 +68,7 @@ def _rows(table, columns, path, batch=500):
             for r in chunk:
                 out = []
                 for header, col in columns:
-                    if header == "data_origin":
-                        out.append(ORIGIN.get(r["source"], "UNKNOWN"))
-                    elif col == "warnings_json":
+                    if col == "warnings_json":
                         out.append(_warnings(r[col]))
                     elif col == "invalid_json":
                         out.append(_invalid(r[col]))

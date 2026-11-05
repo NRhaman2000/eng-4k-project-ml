@@ -32,22 +32,22 @@ test("waits for telemetry, then renders envelope data with MOCK label", async ()
   expect(ws.sent).toEqual([]); // monitoring only: the page never sends anything
 });
 
-test("HARDWARE packet full of nulls renders N/A everywhere without crashing", async () => {
+test("measured serial packet full of nulls renders N/A everywhere without crashing", async () => {
   const ws = await connected();
   const nulls = { voltage: null, temperature: null, soh: null, balancing: null, bypassed: null, fault: null };
   ws.emit({
     type: "telemetry",
-    data: packet({ source: "HARDWARE", pack_voltage: null, pack_current: null, balancing: null,
+    data: packet({ transport: "SERIAL", data_origin: "MEASURED", pack_voltage: null, pack_current: null, balancing: null,
                    cells: [1, 2, 3, 4].map((i) => cell(i, nulls)) }),
   });
-  expect(screen.getByText(/HARDWARE: live sensor data/)).toBeInTheDocument();
+  expect(screen.getByTestId("origin-banner")).toHaveTextContent("HARDWARE: MEASURED");
   expect(screen.queryByText(/SIMULATED DATA/)).not.toBeInTheDocument();
   for (const n of [1, 2, 3, 4]) expect(within(screen.getByTestId(`cell-${n}`)).getAllByText("N/A")).toHaveLength(5);
 });
 
 test("partial packet with missing optional keys still renders", async () => {
   const ws = await connected();
-  ws.emit({ type: "telemetry", data: { timestamp: "2026-11-05T04:00:00Z", source: "HARDWARE", system_state: "NORMAL",
+  ws.emit({ type: "telemetry", data: { timestamp: "2026-11-05T04:00:00Z", transport: "SERIAL", system_state: "NORMAL",
                                        cells: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] } });
   expect(screen.getByTestId("system-state")).toHaveTextContent("NORMAL");
   expect(screen.getByTestId("firmware-fault")).toHaveTextContent("None");
@@ -56,7 +56,7 @@ test("partial packet with missing optional keys still renders", async () => {
 test("data link disconnect from status reaches the page", async () => {
   const ws = await connected();
   ws.emit({ type: "telemetry", data: packet() });
-  ws.emit({ type: "status", data: status({ source: "HARDWARE", connected: false, stale: true, last_error: "disconnected: device unplugged" }) });
+  ws.emit({ type: "status", data: status({ transport: "SERIAL", data_origin: "UNVERIFIED", connected: false, stale: true, last_error: "disconnected: device unplugged" }) });
   expect(screen.getByText("Disconnected")).toBeInTheDocument();
   expect(screen.getByText(/device unplugged/)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("STALE");
@@ -96,7 +96,7 @@ test("firmware states render: BALANCING, FAULT_DETECTED, ISOLATED", async () => 
 test("fault events show in history without duplicates", async () => {
   const ws = await connected();
   ws.emit({ type: "telemetry", data: packet() });
-  const ev = { timestamp: "2026-11-05T04:00:05Z", source: "MOCK", seq: 20, kind: "FAULT_REPORTED", cell: 2,
+  const ev = { timestamp: "2026-11-05T04:00:05Z", transport: "MOCK", data_origin: "SYNTHETIC", seq: 20, kind: "FAULT_REPORTED", cell: 2,
                detail: "UNDERVOLTAGE", message: "Firmware reported UNDERVOLTAGE on cell 2" };
   ws.emit({ type: "event", data: ev });
   ws.emit({ type: "event", data: ev });
@@ -124,4 +124,20 @@ test("ignores malformed messages and accepts a pre-envelope packet", async () =>
   expect(screen.getByText(/Waiting for BMS telemetry/)).toBeInTheDocument();
   ws.emit(packet({ pack_voltage: 13.5 }));
   expect(screen.getByText("13.500 V")).toBeInTheDocument();
+});
+
+test.each([
+  ["MOCK", "SYNTHETIC", "SIMULATED DATA (MOCK)", "synthetic"],
+  ["SERIAL", "SYNTHETIC", "SERIAL TEST / SYNTHETIC", "synthetic"],
+  ["SERIAL", "UNVERIFIED", "SERIAL / ORIGIN NOT DECLARED", "unverified"],
+  ["SERIAL", "MEASURED", "HARDWARE: MEASURED", "measured"],
+  ["SERIAL", undefined, "SERIAL / ORIGIN NOT DECLARED", "unverified"],
+])("transport %s + origin %s is labelled %s", async (transport, data_origin, title, kind) => {
+  const ws = await connected();
+  ws.emit({ type: "telemetry", data: packet({ transport, data_origin }) });
+  const banner = screen.getByTestId("origin-banner");
+  expect(banner).toHaveTextContent(title);
+  expect(banner).toHaveClass(`banner-${kind}`);
+  if (data_origin !== "MEASURED") expect(screen.queryByText(/HARDWARE/)).not.toBeInTheDocument();
+  expect(screen.getByText(transport, { selector: ".badge" })).toBeInTheDocument();
 });

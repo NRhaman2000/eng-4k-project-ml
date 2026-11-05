@@ -34,7 +34,7 @@ One real frame (seq 42) exactly as sent, 468 bytes including the newline:
 
 - `null` means "not measured / not available". The host shows N/A and never fills in a value.
 - `state` is one of `NORMAL`, `BALANCING`, `FAULT_DETECTED`, `ISOLATED`.
-- `src` is optional. The mock always sends `MOCK`; hardware frames may omit it, and the host labels the source.
+- `src` is optional. The mock streamer always sends `MOCK`, so the dashboard labels its frames SERIAL TEST / SYNTHETIC. Firmware frames may omit it. The backend then uses the operator's `BMS_SERIAL_DATA_ORIGIN` (default UNVERIFIED); a frame can never mark itself MEASURED.
 - The CRC is zlib/IEEE CRC-32, the STM32G4 hardware CRC unit's default polynomial. It can be made optional (`decode_frame(..., require_crc=False)`) if firmware won't send it.
 - Every field name and type here is a proposal for the CE team to accept or change.
 

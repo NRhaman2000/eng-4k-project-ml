@@ -1,10 +1,12 @@
 import { fmtAge, fmtTime } from "../lib/format.js";
-import { STALE_MS } from "../lib/telemetry.js";
+import { STALE_MS, originInfo } from "../lib/telemetry.js";
 
 const WS_LABEL = { open: "Connected", connecting: "Connecting…", reconnecting: "Reconnecting…" };
 
 export default function StatusBar({ packet, status, wsState, lastReceivedAt, now }) {
-  const source = packet?.source ?? status?.source ?? null;
+  const transport = packet?.transport ?? status?.transport ?? null;
+  const origin = packet?.data_origin ?? status?.data_origin ?? null;
+  const info = originInfo(transport, origin);
   const ageMs = lastReceivedAt == null ? null : now - lastReceivedAt;
   const stale = packet != null && (ageMs > STALE_MS || status?.stale === true || wsState !== "open");
   const link = wsState !== "open" ? null : status == null ? null : status.connected;
@@ -12,13 +14,10 @@ export default function StatusBar({ packet, status, wsState, lastReceivedAt, now
 
   return (
     <section className="status" aria-label="Connection status">
-      {source === "MOCK" && (
-        <div className="banner banner-mock" role="note">
-          SIMULATED DATA (MOCK). Values are synthetic, not measured from the battery.
+      {info && (
+        <div className={`banner banner-${info.kind}`} role="note" data-testid="origin-banner">
+          <strong>{info.title}.</strong> {info.text}
         </div>
-      )}
-      {source === "HARDWARE" && (
-        <div className="banner banner-hw" role="note">HARDWARE: live sensor data reported by the BMS.</div>
       )}
       {stale && (
         <div className="banner banner-stale" role="alert">
@@ -27,7 +26,10 @@ export default function StatusBar({ packet, status, wsState, lastReceivedAt, now
       )}
       <div className="status-row">
         <span className="status-item">
-          Source: <strong className={`badge badge-${(source ?? "none").toLowerCase()}`}>{source ?? "N/A"}</strong>
+          Transport: <strong className="badge">{transport ?? "N/A"}</strong>
+        </span>
+        <span className="status-item">
+          Data origin: <strong className={`badge badge-${(origin ?? "none").toLowerCase()}`}>{origin ?? "N/A"}</strong>
         </span>
         <span className="status-item">
           Backend: <strong className={`conn conn-${wsState}`}>{WS_LABEL[wsState]}</strong>

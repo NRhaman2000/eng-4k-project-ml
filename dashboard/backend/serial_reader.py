@@ -1,4 +1,4 @@
-"""HARDWARE source: reads STM32 telemetry from a serial port.
+"""SERIAL transport: reads telemetry lines from a serial port (the STM32, or a test feeder).
 
 Receive-only. This module never writes to the port: the dashboard has no
 command path to the MCU (REQ-SE-03).
@@ -7,6 +7,11 @@ Two line formats are accepted, both PROVISIONAL until the CE team confirms:
   1. JSON frame v0 (see dashboard/tools/serial_frame.py): {...}*CRC32
   2. Legacy key=value: C1=3.712,...,STATE=NORMAL
 Missing fields become None. Bad lines are counted and logged, never fatal.
+
+Data origin: the backend cannot tell what is on the other end of the port, so
+each packet gets the operator-configured origin (default UNVERIFIED). A line that
+marks itself synthetic ("src":"MOCK" in JSON, SRC=MOCK in key=value) is always
+SYNTHETIC. A frame can never promote itself to MEASURED.
 """
 import asyncio
 import logging
@@ -30,6 +35,15 @@ class ParseError(ValueError):
     pass
 
 
+SYNTHETIC_MARKERS = {"MOCK", "SIM", "SIMULATED", "SYNTHETIC", "TEST"}
+
+
+def _origin(marker, default):
+    if isinstance(marker, str) and marker.strip().upper() in SYNTHETIC_MARKERS:
+        return "SYNTHETIC"
+    return default
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -44,7 +58,7 @@ def _num(values, key, cast=float):
         raise ParseError(f"{key}={raw!r} is not a number")
 
 
-def parse_serial_line(line, timestamp=None):
+def parse_serial_line(line, timestamp=None, origin="UNVERIFIED"):
     """Legacy key=value format, e.g. C1=3.712,...,T1=25.1,...,I=1.21,BAL=1,STATE=NORMAL."""
     values = {}
     for part in line.strip().split(","):
@@ -67,7 +81,8 @@ def parse_serial_line(line, timestamp=None):
     bal = values.get("BAL")
     return TelemetryPacket(
         timestamp=timestamp or _now(),
-        source="HARDWARE",
+        transport="SERIAL",
+        data_origin=_origin(values.get("SRC"), origin),
         pack_voltage=pack_v,
         pack_current=_num(values, "I"),
         cells=cells,
@@ -81,7 +96,7 @@ def parse_serial_line(line, timestamp=None):
     )
 
 
-def frame_to_packet(obj, timestamp=None):
+def frame_to_packet(obj, timestamp=None, origin="UNVERIFIED"):
     """Map a decoded v0 JSON frame to a TelemetryPacket."""
     pack = obj["pack"] if isinstance(obj["pack"], dict) else {}
     cells = []
@@ -99,8 +114,8 @@ def frame_to_packet(obj, timestamp=None):
     bals = [c.balancing for c in cells]
     return TelemetryPacket(
         timestamp=timestamp or _now(),
-        # the host labels the source; a frame claiming MOCK on the hardware port is still kept as MOCK
-        source="MOCK" if obj.get("src") == "MOCK" else "HARDWARE",
+        transport="SERIAL",
+        data_origin=_origin(obj.get("src"), origin),
         seq=obj["seq"],
         mcu_ms=obj["mcu_ms"],
         pack_voltage=pack.get("v"),
@@ -114,7 +129,7 @@ def frame_to_packet(obj, timestamp=None):
     )
 
 
-def parse_line(line, timestamp=None):
+def parse_line(line, timestamp=None, origin="UNVERIFIED"):
     """Parse one raw serial line (bytes or str) into a TelemetryPacket or raise ParseError."""
     if isinstance(line, str):
         line = line.encode()
@@ -123,8 +138,8 @@ def parse_line(line, timestamp=None):
         raise ParseError("empty line")
     try:
         if stripped.startswith(b"{"):
-            return frame_to_packet(decode_frame(stripped), timestamp)
-        return parse_serial_line(stripped.decode("ascii"), timestamp)
+            return frame_to_packet(decode_frame(stripped), timestamp, origin)
+        return parse_serial_line(stripped.decode("ascii"), timestamp, origin)
     except FrameError as e:
         raise ParseError(f"frame {e}")
     except ValidationError as e:
@@ -136,8 +151,8 @@ def parse_line(line, timestamp=None):
 class SerialSource:
     """Yields packets from a serial port; reconnects with backoff when the port drops."""
 
-    def __init__(self, port, baud=115200, opener=None, retry_s=1.0, max_retry_s=5.0):
-        self.port, self.baud = port, baud
+    def __init__(self, port, baud=115200, opener=None, retry_s=1.0, max_retry_s=5.0, origin="UNVERIFIED"):
+        self.port, self.baud, self.origin = port, baud, origin
         self.opener = opener or (lambda: serial.Serial(port, baudrate=baud, timeout=0.2))
         self.retry_s, self.max_retry_s = retry_s, max_retry_s
 
@@ -170,7 +185,7 @@ class SerialSource:
                     while b"\n" in buf:
                         line, buf = buf.split(b"\n", 1)
                         try:
-                            yield parse_line(line)
+                            yield parse_line(line, origin=self.origin)
                         except ParseError as e:
                             status.packets_rejected += 1
                             status.last_error = str(e)

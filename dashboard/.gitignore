@@ -2,4 +2,6 @@
 tools/results/
 __pycache__/
 .pytest_cache/
-backend/telemetry*.db
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm

@@ -19,7 +19,7 @@ def length(scenario):
 def test_deterministic():
     a = packet_at("demo", 123, seed=4, timestamp="x").model_dump()
     b = packet_at("demo", 123, seed=4, timestamp="x").model_dump()
-    assert a == b and a["source"] == "MOCK"
+    assert a == b and (a["transport"], a["data_origin"]) == ("MOCK", "SYNTHETIC")
 
 
 def test_normal_scenario_never_faults():

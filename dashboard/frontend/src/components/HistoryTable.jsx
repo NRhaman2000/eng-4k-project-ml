@@ -28,27 +28,28 @@ export default function HistoryTable({ backend = BACKEND }) {
         </div>
       </div>
       <p className="muted small">
-        Exports contain every stored row, oldest first. Each row is labelled with its source
-        (MOCK = synthetic, HARDWARE = measured); empty cells mean "not reported".
+        Exports contain every stored row, oldest first. Each row carries its transport (MOCK or SERIAL)
+        and data origin (SYNTHETIC, MEASURED or UNVERIFIED); empty cells mean "not reported".
       </p>
       {error && <p className="warn-text small">History unavailable: {error}</p>}
       <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
-              <th>Time</th><th>Source</th><th>Pack V</th><th>Pack I</th>
+              <th>Time</th><th>Transport</th><th>Origin</th><th>Pack V</th><th>Pack I</th>
               <th>Cell 1</th><th>Cell 2</th><th>Cell 3</th><th>Cell 4</th>
               <th>Balancing</th><th>Fault</th><th>State</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={11} className="muted">No history yet.</td></tr>
+              <tr><td colSpan={12} className="muted">No history yet.</td></tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id}>
                   <td>{fmtTime(r.timestamp)}</td>
-                  <td>{r.source ?? ""}</td>
+                  <td>{r.transport ?? ""}</td>
+                  <td>{r.data_origin ?? ""}</td>
                   <td>{fmt(r.pack_voltage, 3, "V")}</td>
                   <td>{fmt(r.pack_current, 2, "A")}</td>
                   {[1, 2, 3, 4].map((n) => (
