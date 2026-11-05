@@ -1,81 +1,190 @@
-from telemetry import (
-    TelemetryPacket,
-    CellTelemetry,
-    FaultTelemetry,
-)
+"""HARDWARE source: reads STM32 telemetry from a serial port.
+
+Receive-only. This module never writes to the port: the dashboard has no
+command path to the MCU (REQ-SE-03).
+
+Two line formats are accepted, both PROVISIONAL until the CE team confirms:
+  1. JSON frame v0 (see dashboard/tools/serial_frame.py): {...}*CRC32
+  2. Legacy key=value: C1=3.712,...,STATE=NORMAL
+Missing fields become None. Bad lines are counted and logged, never fatal.
+"""
+import asyncio
+import logging
+import os
+import sys
+from datetime import datetime, timezone
+
+import serial
+from pydantic import ValidationError
+
+from telemetry import CellTelemetry, FaultTelemetry, TelemetryPacket
+
+# shortcut: frame codec lives with the Phase 0 tools; move to a shared package if a third user appears
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
+from serial_frame import MAX_LINE_BYTES, FrameError, decode_frame  # noqa: E402
+
+log = logging.getLogger("bms.serial")
 
 
-def parse_serial_line(line: str) -> TelemetryPacket:
-    """
-    Convert one STM32 serial line into the same TelemetryPacket
-    shape used by simulator.py.
+class ParseError(ValueError):
+    pass
 
-    Expected future format example:
-    C1=3.712,C2=3.684,C3=3.741,C4=3.699,
-    T1=25.1,T2=26.0,T3=24.8,T4=25.4,
-    I=1.21,SOH1=91.4,SOH2=88.2,SOH3=93.0,SOH4=90.1,
-    BAL=1,FAULT=0,FAULT_CELL=0,FAULT_TYPE=NONE,STATE=NORMAL
-    """
 
+def _now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _num(values, key, cast=float):
+    raw = values.get(key)
+    if raw is None or raw == "" or raw.upper() in ("NA", "N/A", "NAN", "NONE", "NULL"):
+        return None
+    try:
+        return cast(raw)
+    except ValueError:
+        raise ParseError(f"{key}={raw!r} is not a number")
+
+
+def parse_serial_line(line, timestamp=None):
+    """Legacy key=value format, e.g. C1=3.712,...,T1=25.1,...,I=1.21,BAL=1,STATE=NORMAL."""
     values = {}
-
-    parts = line.strip().split(",")
-
-    for part in parts:
-        if "=" not in part:
-            continue
-
-        key, value = part.split("=", 1)
-        values[key.strip()] = value.strip()
-
+    for part in line.strip().split(","):
+        if "=" in part:
+            key, value = part.split("=", 1)
+            values[key.strip().upper()] = value.strip()
+    if "STATE" not in values:
+        raise ParseError("key=value line has no STATE")
     cells = [
-        CellTelemetry(
-            id=1,
-            voltage=float(values["C1"]),
-            temperature=float(values["T1"]),
-            soh=float(values["SOH1"]),
-        ),
-        CellTelemetry(
-            id=2,
-            voltage=float(values["C2"]),
-            temperature=float(values["T2"]),
-            soh=float(values["SOH2"]),
-        ),
-        CellTelemetry(
-            id=3,
-            voltage=float(values["C3"]),
-            temperature=float(values["T3"]),
-            soh=float(values["SOH3"]),
-        ),
-        CellTelemetry(
-            id=4,
-            voltage=float(values["C4"]),
-            temperature=float(values["T4"]),
-            soh=float(values["SOH4"]),
-        ),
+        CellTelemetry(id=n, voltage=_num(values, f"C{n}"), temperature=_num(values, f"T{n}"),
+                      soh=_num(values, f"SOH{n}"))
+        for n in range(1, 5)
     ]
-
-    fault_active = values.get("FAULT", "0") == "1"
-
-    fault_cell_raw = int(values.get("FAULT_CELL", "0"))
-    fault_cell = fault_cell_raw if fault_cell_raw > 0 else None
-
-    fault_type_raw = values.get("FAULT_TYPE", "NONE")
-    fault_type = None if fault_type_raw == "NONE" else fault_type_raw
-
+    volts = [c.voltage for c in cells]
+    pack_v = _num(values, "PV")
+    if pack_v is None and None not in volts:
+        pack_v = round(sum(volts), 3)
+    fault_cell = _num(values, "FAULT_CELL", int)
+    fault_type = values.get("FAULT_TYPE")
+    bal = values.get("BAL")
     return TelemetryPacket(
-        timestamp=values.get("TIME", ""),
-        pack_voltage=round(
-            sum(cell.voltage for cell in cells),
-            3,
-        ),
-        pack_current=float(values["I"]),
+        timestamp=timestamp or _now(),
+        source="HARDWARE",
+        pack_voltage=pack_v,
+        pack_current=_num(values, "I"),
         cells=cells,
-        balancing=values.get("BAL", "0") == "1",
+        balancing=None if bal is None else bal == "1",
         fault=FaultTelemetry(
-            active=fault_active,
-            cell=fault_cell,
-            type=fault_type,
+            active=values.get("FAULT") == "1",
+            cell=fault_cell if fault_cell else None,
+            type=None if fault_type in (None, "", "NONE") else fault_type,
         ),
-        system_state=values.get("STATE", "NORMAL"),
+        system_state=values["STATE"],
     )
+
+
+def frame_to_packet(obj, timestamp=None):
+    """Map a decoded v0 JSON frame to a TelemetryPacket."""
+    pack = obj["pack"] if isinstance(obj["pack"], dict) else {}
+    cells = []
+    for c in obj["cells"]:
+        if not isinstance(c, dict):
+            raise ParseError("cell entry is not an object")
+        cells.append(CellTelemetry(id=c.get("id"), voltage=c.get("v"), temperature=c.get("t"),
+                                   soh=c.get("soh"), balancing=c.get("bal"), bypassed=c.get("bypass"),
+                                   fault=c.get("fault")))
+    faults = obj.get("faults") or []
+    first = faults[0] if faults and isinstance(faults[0], dict) else {}
+    cell_faults = [c for c in cells if c.fault]
+    fault_type = first.get("type") or (cell_faults[0].fault if cell_faults else None)
+    fault_cell = first.get("cell") or (cell_faults[0].id if cell_faults else None)
+    bals = [c.balancing for c in cells]
+    return TelemetryPacket(
+        timestamp=timestamp or _now(),
+        # the host labels the source; a frame claiming MOCK on the hardware port is still kept as MOCK
+        source="MOCK" if obj.get("src") == "MOCK" else "HARDWARE",
+        seq=obj["seq"],
+        mcu_ms=obj["mcu_ms"],
+        pack_voltage=pack.get("v"),
+        pack_current=pack.get("i"),
+        soc=pack.get("soc"),
+        pack_soh=pack.get("soh"),
+        cells=cells,
+        balancing=None if all(b is None for b in bals) else any(bals),
+        fault=FaultTelemetry(active=fault_type is not None, cell=fault_cell, type=fault_type),
+        system_state=obj["state"],
+    )
+
+
+def parse_line(line, timestamp=None):
+    """Parse one raw serial line (bytes or str) into a TelemetryPacket or raise ParseError."""
+    if isinstance(line, str):
+        line = line.encode()
+    stripped = line.strip()
+    if not stripped:
+        raise ParseError("empty line")
+    try:
+        if stripped.startswith(b"{"):
+            return frame_to_packet(decode_frame(stripped), timestamp)
+        return parse_serial_line(stripped.decode("ascii"), timestamp)
+    except FrameError as e:
+        raise ParseError(f"frame {e}")
+    except ValidationError as e:
+        raise ParseError(f"invalid values: {e.errors()[0]['loc']} {e.errors()[0]['msg']}")
+    except (UnicodeDecodeError, TypeError, KeyError) as e:
+        raise ParseError(f"{type(e).__name__}: {e}")
+
+
+class SerialSource:
+    """Yields packets from a serial port; reconnects with backoff when the port drops."""
+
+    def __init__(self, port, baud=115200, opener=None, retry_s=1.0, max_retry_s=5.0):
+        self.port, self.baud = port, baud
+        self.opener = opener or (lambda: serial.Serial(port, baudrate=baud, timeout=0.2))
+        self.retry_s, self.max_retry_s = retry_s, max_retry_s
+
+    async def packets(self, status):
+        status.port = self.port
+        delay = self.retry_s
+        first = True
+        while True:
+            try:
+                ser = await asyncio.to_thread(self.opener)
+            except (serial.SerialException, OSError) as e:
+                status.connected = False
+                status.last_error = f"open failed: {e}"
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, self.max_retry_s)
+                continue
+            if not first:
+                status.reconnects += 1
+            first = False
+            status.connected = True
+            status.last_error = None
+            delay = self.retry_s
+            buf = b""
+            try:
+                while True:
+                    data = await asyncio.to_thread(ser.read, max(1, getattr(ser, "in_waiting", 0) or 0))
+                    if not data:
+                        continue
+                    buf += data
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        try:
+                            yield parse_line(line)
+                        except ParseError as e:
+                            status.packets_rejected += 1
+                            status.last_error = str(e)
+                            log.warning("rejected serial line: %s", e)
+                    if len(buf) > MAX_LINE_BYTES:
+                        status.packets_rejected += 1
+                        status.last_error = "line too long, discarded"
+                        buf = b""
+            except (serial.SerialException, OSError) as e:
+                status.connected = False
+                status.last_error = f"disconnected: {e}"
+                log.warning("serial port lost: %s", e)
+                try:
+                    ser.close()
+                except Exception:
+                    pass
+                await asyncio.sleep(delay)
