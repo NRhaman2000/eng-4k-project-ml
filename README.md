@@ -12,7 +12,7 @@ The project combines:
 - **Fault simulation** for undervoltage and overcurrent conditions.
 - A future **STM32 serial telemetry path** that will replace the current simulator without requiring changes to the frontend.
 
-> **Current development status:** The dashboard currently runs from simulated BMS telemetry. The `serial_reader.py` interface is prepared for hardware integration, but the final STM32 serial packet format is still to be confirmed. Current dashboard SoH values are simulated and are not yet sourced from the embedded TinyML model.
+> **Current development status:** The telemetry dashboard runs end to end on synthetic data (mock simulator, or synthetic frames over a serial loopback). It has not yet been tested with the STM32, and the serial packet format is still provisional. Dashboard SoH values are synthetic and are not yet sourced from the embedded TinyML model. **See [`dashboard/README.md`](dashboard/README.md) for the dashboard's setup, usage and status.**
 
 ---
 
@@ -108,25 +108,8 @@ To avoid storing large raw ADC time-series buffers on the microcontroller, the i
 ```text
 eng-4k-project-ml/
 |
-├── dashboard/
-│   ├── backend/
-│   │   ├── main.py                 # FastAPI app, REST API, WebSocket server
-│   │   ├── telemetry.py            # Shared Pydantic telemetry data models
-│   │   ├── simulator.py            # Mock 4S battery telemetry + fault simulation
-│   │   ├── database.py             # SQLite initialization, logging, history queries
-│   │   └── serial_reader.py        # Future STM32 serial packet parser
-│   │
-│   └── frontend/
-│       ├── src/
-│       │   ├── App.jsx             # Live dashboard, charts, fault UI, history table
-│       │   ├── App.css
-│       │   ├── index.css
-│       │   └── main.jsx
-│       ├── public/
-│       ├── package.json
-│       ├── package-lock.json
-│       ├── index.html
-│       └── vite.config.js
+├── dashboard/                      # Telemetry dashboard: backend, frontend, serial test tools
+│                                   #   (structure and usage: dashboard/README.md)
 |
 ├── data/
 │   ├── raw/                        # Extracted NASA PCoE MAT files
@@ -166,235 +149,18 @@ eng-4k-project-ml/
 
 ---
 
-## 5. Telemetry Data Contract
+## 5–10. Telemetry Dashboard
 
-The frontend and backend communicate using one shared telemetry structure.
+The dashboard documentation has moved to **[`dashboard/README.md`](dashboard/README.md)**. It covers:
 
-Example:
+- installation and startup (backend and frontend)
+- mock scenarios (NORMAL, BALANCING, FAULT_DETECTED, ISOLATED)
+- connecting the STM32 once the serial protocol is confirmed
+- transport (MOCK/SERIAL) vs data origin (SYNTHETIC/MEASURED/UNVERIFIED) labelling
+- the API, WebSocket messages, SQLite storage and CSV export
+- automated tests, known limitations, and the demonstration steps
 
-```json
-{
-  "timestamp": "2026-10-02T13:48:08.911735",
-  "pack_voltage": 14.811,
-  "pack_current": 0.91,
-  "cells": [
-    {
-      "id": 1,
-      "voltage": 3.682,
-      "temperature": 29.7,
-      "soh": 92.3
-    },
-    {
-      "id": 2,
-      "voltage": 3.672,
-      "temperature": 24.8,
-      "soh": 85.7
-    },
-    {
-      "id": 3,
-      "voltage": 3.747,
-      "temperature": 24.0,
-      "soh": 89.6
-    },
-    {
-      "id": 4,
-      "voltage": 3.710,
-      "temperature": 26.8,
-      "soh": 90.5
-    }
-  ],
-  "balancing": true,
-  "fault": {
-    "active": false,
-    "cell": null,
-    "type": null
-  },
-  "system_state": "NORMAL"
-}
-```
-
-The same format is intended to be produced by both the simulator and future STM32 serial ingestion path.
-
----
-
-## 6. Telemetry Dashboard Features
-
-The current dashboard supports:
-
-- Live 4-cell voltage display.
-- Live per-cell temperature display.
-- Live per-cell SoH display.
-- Pack voltage and pack current.
-- Balancing ON/OFF state.
-- System state display (`NORMAL`, `FAULT_DETECTED`).
-- Real-time WebSocket updates.
-- Real-time multi-cell voltage graph.
-- SQLite telemetry persistence.
-- Historical telemetry table.
-- Undervoltage fault simulation.
-- Overcurrent fault simulation.
-- Visual highlighting of faulted cells.
-- Fault logging in historical telemetry.
-- Fixed chart scaling to prevent layout jumps during undervoltage events.
-
-### Simulated fault behavior
-
-The simulator currently generates two demonstration faults:
-
-**Undervoltage**
-
-```text
-System State: FAULT_DETECTED
-Fault: UNDERVOLTAGE on Cell N
-Cell Voltage: approximately 2.30–2.49 V
-```
-
-The affected cell is highlighted in red on the dashboard.
-
-**Overcurrent**
-
-```text
-System State: FAULT_DETECTED
-Fault: OVERCURRENT
-Pack Current: approximately ±5.5–7.0 A
-```
-
-The pack current and fault state are visually emphasized.
-
-These values are for software demonstration/testing and are not yet readings from the physical BMS.
-
----
-
-## 7. Dashboard API
-
-The FastAPI backend currently exposes:
-
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /` | Backend health message |
-| `GET /api/latest` | Generate/return the latest telemetry packet |
-| `GET /api/history?limit=50` | Return recent SQLite telemetry records |
-| `WS /ws` | Stream live telemetry to the React dashboard |
-
-FastAPI interactive documentation is available locally at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
----
-
-## 8. Running the Telemetry Dashboard
-
-### Backend
-
-From the repository root:
-
-```bash
-source .venv/bin/activate
-cd dashboard/backend
-
-pip install fastapi pydantic "uvicorn[standard]"
-
-python -m uvicorn main:app --reload
-```
-
-Backend:
-
-```text
-http://127.0.0.1:8000
-```
-
-API documentation:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-### Frontend
-
-Open a second terminal:
-
-```bash
-cd dashboard/frontend
-
-npm install
-npm install recharts
-npm run dev
-```
-
-Frontend:
-
-```text
-http://localhost:5173
-```
-
-Keep both terminals running while using the dashboard.
-
----
-
-## 9. SQLite Telemetry Logging
-
-Telemetry received by the backend is stored locally in:
-
-```text
-dashboard/backend/telemetry.db
-```
-
-The database is automatically initialized by `database.py`.
-
-Stored information includes:
-
-- Timestamp
-- Pack voltage
-- Pack current
-- Cell 1–4 voltages
-- Cell 1–4 temperatures
-- Cell 1–4 SoH values
-- Balancing state
-- Fault state
-- Faulted cell
-- Fault type
-- System state
-
-`telemetry.db` is intentionally excluded from source control because it is generated runtime data.
-
----
-
-## 10. STM32 Serial Integration
-
-`dashboard/backend/serial_reader.py` is the initial adapter for future hardware telemetry.
-
-The intended architecture is:
-
-```text
-STM32 serial packet
-        |
-        v
-parse_serial_line()
-        |
-        v
-TelemetryPacket
-        |
-        v
-FastAPI / WebSocket / SQLite
-```
-
-A provisional serial packet format is currently assumed for parser development:
-
-```text
-C1=3.712,C2=3.684,C3=3.741,C4=3.699,
-T1=25.1,T2=26.0,T3=24.8,T4=25.4,
-I=1.21,
-SOH1=91.4,SOH2=88.2,SOH3=93.0,SOH4=90.1,
-BAL=1,
-FAULT=0,
-FAULT_CELL=0,
-FAULT_TYPE=NONE,
-STATE=NORMAL
-```
-
-**This format is provisional.** `serial_reader.py` should be updated once the Computer Engineering/firmware team confirms the final STM32 serial protocol.
+The provisional serial frame format and the mock serial loopback test are in [`dashboard/tools/README.md`](dashboard/tools/README.md).
 
 ---
 
@@ -585,20 +351,13 @@ python src/export_c_header.py
 
 ### Software / Telemetry
 
-- [x] Telemetry data model
-- [x] Mock 4S battery simulator
-- [x] FastAPI backend
-- [x] WebSocket streaming
-- [x] React dashboard
-- [x] Live cell telemetry
-- [x] Real-time voltage graph
-- [x] SQLite logging
-- [x] Historical telemetry API
-- [x] Historical telemetry table
-- [x] Undervoltage simulation
-- [x] Overcurrent simulation
-- [x] Fault visualization
-- [x] Initial STM32 serial parser
+Details: [`dashboard/README.md`](dashboard/README.md).
+
+- [x] Mock serial loopback test (synthetic data, PTY)
+- [x] Shared ingestion loop, WebSocket broadcast, SQLite logging, CSV export
+- [x] Deterministic mock fault, isolation and balancing scenarios
+- [x] Transport and data-origin labelling (MOCK/SERIAL, SYNTHETIC/MEASURED/UNVERIFIED)
+- [x] Automated backend, serial and frontend tests
 - [ ] Final STM32 packet protocol
 - [ ] Physical serial connection
 - [ ] Real embedded SoH values in dashboard
@@ -609,8 +368,8 @@ python src/export_c_header.py
 ## 15. Next Steps
 
 1. Finalize the STM32 UART/USB serial telemetry packet with the firmware team.
-2. Update `serial_reader.py` to match the final packet format.
-3. Add simulation/hardware source selection to the backend.
+2. Update `dashboard/tools/serial_frame.py` and `frame_to_packet()` in `dashboard/backend/serial_reader.py` to match the final packet format.
+3. Run the dashboard against the STM32 with `BMS_TRANSPORT=SERIAL BMS_SERIAL_DATA_ORIGIN=MEASURED`.
 4. Connect the STM32 and validate end-to-end serial → FastAPI → WebSocket → dashboard telemetry.
 5. Replace simulated SoH values with TinyML inference results from the target MCU.
 6. Test serial buffering, malformed packets, disconnects, and reconnection behavior.
