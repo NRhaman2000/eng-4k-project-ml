@@ -23,7 +23,7 @@ export function cell(id, over = {}) {
 
 export function packet(over = {}) {
   return {
-    timestamp: "2026-11-05T04:00:00.000+00:00", source: "MOCK", seq: 1, mcu_ms: 250, scenario: "demo:normal",
+    timestamp: "2026-11-05T04:00:00.000+00:00", transport: "MOCK", data_origin: "SYNTHETIC", seq: 1, mcu_ms: 250, scenario: "demo:normal",
     pack_voltage: 14.8, pack_current: 1.2, soc: null, pack_soh: null,
     cells: [1, 2, 3, 4].map((i) => cell(i)), balancing: false,
     fault: { active: false, cell: null, type: null }, system_state: "NORMAL", invalid: [], warnings: [],
@@ -32,7 +32,7 @@ export function packet(over = {}) {
 }
 
 export function status(over = {}) {
-  return { source: "MOCK", connected: true, port: "mock:demo", last_packet_at: null, packets_ok: 1,
+  return { transport: "MOCK", data_origin: "SYNTHETIC", connected: true, port: "mock:demo", last_packet_at: null, packets_ok: 1,
            packets_rejected: 0, last_error: null, reconnects: 0, db_write_errors: 0,
            last_packet_age_s: 0.1, stale: false, server_time: "2026-11-05T04:00:00+00:00", ...over };
 }

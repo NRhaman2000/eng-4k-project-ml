@@ -11,7 +11,11 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 SystemState = Literal["NORMAL", "BALANCING", "FAULT_DETECTED", "ISOLATED"]
-Source = Literal["MOCK", "HARDWARE"]
+# How the data reached the backend.
+Transport = Literal["MOCK", "SERIAL"]
+# Whether the values are real. SERIAL data is UNVERIFIED unless the operator declares it MEASURED;
+# frames that mark themselves synthetic are always SYNTHETIC.
+DataOrigin = Literal["SYNTHETIC", "MEASURED", "UNVERIFIED"]
 
 
 class CellTelemetry(BaseModel):
@@ -49,7 +53,8 @@ class TelemetryWarning(BaseModel):
 
 class TelemetryPacket(BaseModel):
     timestamp: str  # host receive time, ISO 8601 UTC
-    source: Source
+    transport: Transport
+    data_origin: DataOrigin
     seq: Optional[int] = Field(default=None, ge=0)
     mcu_ms: Optional[int] = Field(default=None, ge=0)
     scenario: Optional[str] = None  # mock only
@@ -73,7 +78,8 @@ class TelemetryPacket(BaseModel):
 
 
 class LinkStatus(BaseModel):
-    source: Source
+    transport: Transport
+    data_origin: DataOrigin  # configured default; each packet carries its own
     connected: bool = False
     port: Optional[str] = None
     last_packet_at: Optional[str] = None

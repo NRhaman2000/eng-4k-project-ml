@@ -51,7 +51,8 @@ Settings are environment variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `BMS_SOURCE` | `MOCK` | `MOCK` or `HARDWARE` |
+| `BMS_TRANSPORT` | `MOCK` | `MOCK` (in-process simulator) or `SERIAL` (serial port). `BMS_SOURCE=HARDWARE` still works as an alias for `SERIAL` |
+| `BMS_SERIAL_DATA_ORIGIN` | `UNVERIFIED` | what SERIAL data is: `UNVERIFIED`, `MEASURED` (set this only when the STM32 is really connected) or `SYNTHETIC` |
 | `BMS_SERIAL_PORT` | `/dev/ttyACM0` | e.g. `/dev/tty.usbmodem1103` on macOS, `COM5` on Windows |
 | `BMS_BAUD` | `115200` | |
 | `BMS_MOCK_SCENARIO` | `demo` | see section 3 |
@@ -61,8 +62,8 @@ Settings are environment variables:
 
 ## 3. Mock scenarios
 
-Every mock packet has `source: "MOCK"`, and the page shows an orange
-**SIMULATED DATA (MOCK)** banner. Scenarios are deterministic: the same
+Every mock packet has `transport: "MOCK"` and `data_origin: "SYNTHETIC"`,
+and the page shows an orange **SIMULATED DATA (MOCK)** banner. Scenarios are deterministic: the same
 scenario, seed and tick always produce the same values. Each one loops.
 The mock replays what the firmware is expected to report. It does not
 model or control any hardware.
@@ -94,24 +95,43 @@ not TinyML output. Mock SoC and pack SoH are not reported, so they show N/A.
    (framing and CRC) and `frame_to_packet()` in `backend/serial_reader.py`
    (field mapping). Nothing else depends on the wire format.
 3. Find the port: `ls /dev/tty.usb*` (macOS) or `ls /dev/ttyACM*` (Linux).
-4. Start: `BMS_SOURCE=HARDWARE BMS_SERIAL_PORT=/dev/tty.usbmodem1103 BMS_DB_PATH=bench.db python -m uvicorn main:app`
+4. Start, declaring that this port carries real measurements:
+   `BMS_TRANSPORT=SERIAL BMS_SERIAL_DATA_ORIGIN=MEASURED BMS_SERIAL_PORT=/dev/tty.usbmodem1103 BMS_DB_PATH=bench.db python -m uvicorn main:app`.
+   Without `BMS_SERIAL_DATA_ORIGIN=MEASURED`, serial data is labelled **UNVERIFIED**.
 5. Check `http://127.0.0.1:8000/api/status`. You should see
    `connected: true` and `packets_ok` increasing. If `packets_rejected`
    grows, `last_error` says why: CRC, missing field, wrong state name, and
    so on.
-6. The page banner turns green: **HARDWARE: live sensor data**. Unplugging
-   the cable shows **Disconnected**, and the backend retries every 1 to 5 s.
+6. The page banner turns green: **HARDWARE: MEASURED**. Unplugging the
+   cable shows **Disconnected**, and the backend retries every 1 to 5 s.
 
 Without the board, you can rehearse the same path with a virtual cable:
 
 ```bash
 socat pty,raw,echo=0,link=/tmp/ttyTX pty,raw,echo=0,link=/tmp/ttyRX &
-BMS_SOURCE=HARDWARE BMS_SERIAL_PORT=/tmp/ttyRX python -m uvicorn main:app &
+BMS_TRANSPORT=SERIAL BMS_SERIAL_PORT=/tmp/ttyRX python -m uvicorn main:app &
 python ../tools/mock_serial_streamer.py --port /tmp/ttyTX --duration 120
 ```
 
-These frames still say `"src":"MOCK"`, so they are labelled MOCK even
-though they come in over the serial port.
+These frames carry `"src":"MOCK"`, so the page shows **SERIAL TEST /
+SYNTHETIC**: real serial transport, synthetic data. It shows that even if
+`BMS_SERIAL_DATA_ORIGIN=MEASURED` is set, because a synthetic marker always
+wins.
+
+### Transport vs data origin
+
+These are two independent labels, carried on every packet, event, database
+row and CSV row:
+
+| `transport` | `data_origin` | Banner | Meaning |
+| --- | --- | --- | --- |
+| `MOCK` | `SYNTHETIC` | SIMULATED DATA (MOCK) | in-process simulator |
+| `SERIAL` | `SYNTHETIC` | SERIAL TEST / SYNTHETIC | real serial link, test frames marked synthetic (`src` = MOCK, SIM, SIMULATED, SYNTHETIC or TEST) |
+| `SERIAL` | `UNVERIFIED` | SERIAL / ORIGIN NOT DECLARED | serial data the operator has not declared as real (the default) |
+| `SERIAL` | `MEASURED` | HARDWARE: MEASURED | operator set `BMS_SERIAL_DATA_ORIGIN=MEASURED` and the frame is not marked synthetic |
+
+A frame cannot promote itself to MEASURED: only the operator's setting can.
+Data is never shown as hardware data unless it is MEASURED.
 
 ## 5. Validation (what happens to bad or dangerous readings)
 
@@ -135,7 +155,7 @@ curl -OJ http://127.0.0.1:8000/api/export/telemetry.csv
 curl -OJ http://127.0.0.1:8000/api/export/events.csv
 ```
 
-Files are named `bms_<telemetry|events>_<mock|hardware>_<timestamp>.csv`.
+Files are named `bms_<telemetry|events>_<mock|serial>_<timestamp>.csv`.
 They contain every stored row, oldest first, streamed straight from SQLite.
 
 How to read them:
@@ -147,9 +167,9 @@ How to read them:
   `pd.read_csv(f)` turns these into NaN.
 - **Booleans** (`cellN_balancing`, `cellN_bypassed`, `balancing`,
   `firmware_fault_active`) are `1`/`0`, or empty if not reported.
-- **`source` and `data_origin` are on every row.**
-  `SYNTHETIC (mock simulator, not measured)` vs `MEASURED (hardware)`.
-  Filter on these before any analysis. Never mix them in a result.
+- **`transport` and `data_origin` are on every row** (see the table in section 4).
+  Filter on `data_origin == MEASURED` before analysing real battery
+  behaviour. Never mix SYNTHETIC, UNVERIFIED and MEASURED rows in one result.
 - **`firmware_fault_*`** is what the firmware reported.
   **`dashboard_warnings`** lists advisory threshold crossings, e.g.
   `CELL_UNDERVOLTAGE@2=2.41`. **`implausible_readings`** lists raw values
@@ -164,7 +184,7 @@ How to read them:
 | Endpoint | Returns |
 | --- | --- |
 | `GET /api/latest` | most recent accepted packet; 503 before the first one. Read-only. |
-| `GET /api/status` | source, connected, port, last packet time and age, `stale`, ok/rejected counts, last error, reconnects, DB write errors |
+| `GET /api/status` | transport, configured data origin, connected, port, last packet time and age, `stale`, ok/rejected counts, last error, reconnects, DB write errors |
 | `GET /api/history?limit=50` | newest telemetry rows (limit 1-5000) |
 | `GET /api/events?limit=100` | newest events |
 | `GET /api/legacy?limit=50` | rows kept from the prototype schema: `{"total": n, "rows": [...]}` |
@@ -180,7 +200,7 @@ however many browsers are open) and `events`.
 
 Migration from an older schema never deletes data:
 1. The whole file is copied to `telemetry.backup-<YYYYmmdd-HHMMSS>.db` using SQLite's online backup, and the copy's row count is checked.
-2. The old table is renamed: v0 to `telemetry_legacy`, v1 to `telemetry_legacy_v1`. Its row count is checked again.
+2. The old table is renamed: v0 to `telemetry_legacy`, v1/v2 to `telemetry_legacy_vN`, and an old events table to `events_legacy_vN`. Row counts are checked again.
 3. If any step fails, startup stops and nothing is changed.
 
 The old rows are readable at `/api/legacy`. Databases and backups are
@@ -225,7 +245,7 @@ socat is missing.
 - Both windows show identical values: one backend loop, broadcast to every client, one database row per packet.
 - **Monitoring only:** the fault and isolation decisions shown are reported by the firmware. The dashboard sends no commands.
 - **Resilience:** press Ctrl+C on the backend. Both windows show **Reconnecting…** and a red **STALE** banner, and keep the last values. Restart it, and they recover within about 5 s on their own.
-- **Data export:** click **Export telemetry CSV** and **Export events CSV**. Open in Excel and show the units in the headers, `data_origin = SYNTHETIC`, and the isolation events with timestamps.
+- **Data export:** click **Export telemetry CSV** and **Export events CSV**. Open in Excel and show the units in the headers, `transport = MOCK`, `data_origin = SYNTHETIC`, and the isolation events with timestamps.
 - Slower pace if needed: `BMS_MOCK_INTERVAL=0.5` doubles every phase (176 s loop).
 
 **Say clearly:** all data in the demo is synthetic. The serial path was
@@ -235,7 +255,7 @@ validated with a PTY loopback (Section 6.3.4), not with the STM32.
 
 ```
 MOCK:      simulator.MockSource ─┐
-HARDWARE:  serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
+SERIAL:    serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
                                                                            v
                      hub.TelemetryHub (one ingestion loop for the whole backend)
                         ├─ limits.assess: null impossible readings, flag unsafe ones
@@ -262,7 +282,7 @@ HARDWARE:  serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
 | `hooks/useTelemetry.js` | one WebSocket per page, reconnect with backoff, envelope routing, 5-min chart buffer |
 | `lib/format.js` | every number goes through `fmt()`: null/NaN shows "N/A" |
 | `lib/telemetry.js` | cell condition, voltage spread, event merging |
-| `components/StatusBar.jsx` | MOCK/HARDWARE banner, backend and data-link state, last packet, stale warning |
+| `components/StatusBar.jsx` | transport + data-origin banner and badges, backend and data-link state, last packet, stale warning |
 | `components/PackSummary.jsx`, `CellCard.jsx` | pack and per-cell readings, bypass, firmware fault, warnings |
 | `components/FaultPanel.jsx`, `BalancingPanel.jsx` | current fault/isolation, warnings, implausible readings, history |
 | `components/Charts.jsx` | voltage, temperature, pack V/I and SoH charts, 30 s to 5 min windows |
@@ -270,7 +290,7 @@ HARDWARE:  serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
 
 ## 12. Known limitations
 
-- **No STM32 testing.** HARDWARE mode was exercised only through a PTY with synthetic frames, and the frame format is provisional.
+- **No STM32 testing.** SERIAL transport was exercised only through a PTY with synthetic and unverified test frames, and the frame format is provisional. MEASURED has never been used with real data yet.
 - Mock SoH values are fixed synthetic numbers, not model output. Mock SoC and pack SoH are not reported.
 - Charge-transfer direction is not in schema v0, so it shows as "Not reported by firmware".
 - The warning thresholds are provisional display values. Align them with the firmware's thresholds once known.

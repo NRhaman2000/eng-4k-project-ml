@@ -43,7 +43,7 @@ class FakeSerial:
 
 
 def collect(source, n, timeout=3.0):
-    status = LinkStatus(source="HARDWARE")
+    status = LinkStatus(transport="SERIAL", data_origin="UNVERIFIED")
     out = []
 
     async def run():
@@ -78,6 +78,14 @@ def test_reconnects_after_disconnect():
     assert st.reconnects == 1 and opened[0].closed
 
 
+def test_source_applies_configured_origin():
+    p = make_payload(0, 0, random.Random(0)); del p["src"]
+    src = SerialSource("fake", origin="MEASURED",
+                       opener=lambda: FakeSerial([encode_frame(p), frame(1)], then_fail=False))
+    pkts, _ = collect(src, 2)
+    assert [x.data_origin for x in pkts] == ["MEASURED", "SYNTHETIC"]  # frame(1) is marked MOCK
+
+
 def test_retries_until_port_appears():
     attempts = {"n": 0}
 
@@ -92,7 +100,7 @@ def test_retries_until_port_appears():
 
 
 def test_disconnect_sets_status():
-    status = LinkStatus(source="HARDWARE")
+    status = LinkStatus(transport="SERIAL", data_origin="UNVERIFIED")
     src = SerialSource("fake", opener=lambda: FakeSerial([frame(0)]), retry_s=5)
 
     async def run():
@@ -133,3 +141,5 @@ def test_real_pty_with_phase0_streamer():
         socat.terminate()
     seqs = [p.seq for p in pkts]
     assert seqs == list(range(seqs[0], seqs[0] + 10)) and st.packets_rejected == 0
+    # synthetic frames over a real serial link are labelled SERIAL + SYNTHETIC, never as hardware data
+    assert all((p.transport, p.data_origin) == ("SERIAL", "SYNTHETIC") for p in pkts)

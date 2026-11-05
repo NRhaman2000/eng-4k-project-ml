@@ -21,11 +21,12 @@ STALE_AFTER_S = 2.0  # 8 missed frames at 4 Hz
 
 
 class TelemetryHub:
-    def __init__(self, source, source_name, db_path=None, heartbeat_s=1.0):
+    def __init__(self, source, transport, db_path=None, heartbeat_s=1.0, data_origin=None):
         self.source = source
         self.db_path = db_path
         self.heartbeat_s = heartbeat_s
-        self.status = LinkStatus(source=source_name)
+        default_origin = "SYNTHETIC" if transport == "MOCK" else "UNVERIFIED"
+        self.status = LinkStatus(transport=transport, data_origin=data_origin or default_origin)
         self.latest = None
         self.clients = set()
         self.published = 0

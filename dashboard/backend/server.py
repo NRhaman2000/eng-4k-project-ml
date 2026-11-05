@@ -20,8 +20,8 @@ log = logging.getLogger("bms.server")
 
 
 def make_source(config):
-    if config.source == "HARDWARE":
-        return SerialSource(config.serial_port, config.baud)
+    if config.transport == "SERIAL":
+        return SerialSource(config.serial_port, config.baud, origin=config.serial_data_origin)
     return MockSource(config.mock_scenario, config.mock_interval_s)
 
 
@@ -30,7 +30,8 @@ def create_app(config=None, source=None, heartbeat_s=1.0):
     backup = init_db(config.db_path)
     if backup:
         log.warning("database migrated; full backup saved to %s", backup)
-    hub = TelemetryHub(source or make_source(config), config.source, config.db_path, heartbeat_s)
+    origin = "SYNTHETIC" if config.transport == "MOCK" else config.serial_data_origin
+    hub = TelemetryHub(source or make_source(config), config.transport, config.db_path, heartbeat_s, origin)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -50,7 +51,8 @@ def create_app(config=None, source=None, heartbeat_s=1.0):
 
     @app.get("/")
     def root():
-        return {"message": "BMS Telemetry Backend Running", "source": config.source}
+        return {"message": "BMS Telemetry Backend Running", "transport": config.transport,
+                "data_origin": hub.status.data_origin}
 
     @app.get("/api/latest")
     def latest_telemetry():
@@ -77,7 +79,7 @@ def create_app(config=None, source=None, heartbeat_s=1.0):
         return get_recent_telemetry(limit, config.db_path)
 
     def csv_response(chunks, kind):
-        name = f"bms_{kind}_{config.source.lower()}_{datetime.now():%Y%m%d-%H%M%S}.csv"
+        name = f"bms_{kind}_{config.transport.lower()}_{datetime.now():%Y%m%d-%H%M%S}.csv"
         return StreamingResponse(chunks, media_type="text/csv; charset=utf-8",
                                  headers={"Content-Disposition": f'attachment; filename="{name}"'})
 

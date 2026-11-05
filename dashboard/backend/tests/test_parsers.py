@@ -19,15 +19,31 @@ def v0(**overrides):
 def test_json_frame_maps_fields_and_keeps_nulls():
     pk = parse_line(v0())
     assert pk.seq == 5 and pk.mcu_ms == 1250 and pk.system_state == "NORMAL"
-    assert pk.source == "MOCK"  # the streamer labels itself
+    assert (pk.transport, pk.data_origin) == ("SERIAL", "SYNTHETIC")  # the streamer marks itself
     assert pk.cells[0].soh is None and pk.soc is None and pk.pack_soh is None
     assert pk.pack_voltage is not None and pk.fault.active is False
 
 
-def test_json_frame_without_src_is_hardware():
+def test_unmarked_serial_frame_is_unverified_unless_operator_declares_measured():
     p = make_payload(1, 250, random.Random(0))
     del p["src"]
-    assert parse_line(encode_frame(p)).source == "HARDWARE"
+    assert parse_line(encode_frame(p)).data_origin == "UNVERIFIED"
+    assert parse_line(encode_frame(p), origin="MEASURED").data_origin == "MEASURED"
+
+
+@pytest.mark.parametrize("marker", ["MOCK", "sim", "Synthetic", "TEST"])
+def test_synthetic_marker_always_wins_even_if_operator_says_measured(marker):
+    p = make_payload(1, 250, random.Random(0))
+    p["src"] = marker
+    pk = parse_line(encode_frame(p), origin="MEASURED")
+    assert (pk.transport, pk.data_origin) == ("SERIAL", "SYNTHETIC")
+    assert parse_line(KV + ",SRC=MOCK", origin="MEASURED").data_origin == "SYNTHETIC"
+
+
+def test_frame_cannot_promote_itself_to_measured():
+    p = make_payload(1, 250, random.Random(0))
+    p["src"] = "HARDWARE"
+    assert parse_line(encode_frame(p)).data_origin == "UNVERIFIED"
 
 
 def test_json_frame_faults_and_bypass():
@@ -42,7 +58,7 @@ def test_json_frame_faults_and_bypass():
 
 def test_legacy_key_value_still_parses():
     pk = parse_line(KV)
-    assert pk.source == "HARDWARE" and pk.balancing is True
+    assert (pk.transport, pk.data_origin) == ("SERIAL", "UNVERIFIED") and pk.balancing is True
     assert pk.pack_voltage == pytest.approx(14.836, abs=1e-3)
     assert pk.cells[3].soh == 90.1 and pk.fault.cell is None and pk.fault.type is None
 

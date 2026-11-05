@@ -52,13 +52,13 @@ export default function FaultPanel({ packet, events }) {
         <div className="table-wrap">
           <table className="table" aria-label="Fault history">
             <thead>
-              <tr><th>Time</th><th>Source</th><th>Event</th><th>Cell</th><th>Detail</th></tr>
+              <tr><th>Time</th><th>Origin</th><th>Event</th><th>Cell</th><th>Detail</th></tr>
             </thead>
             <tbody>
               {history.map((e) => (
                 <tr key={`${e.timestamp}${e.kind}${e.cell}${e.detail}`}>
                   <td>{fmtTime(e.timestamp)}</td>
-                  <td>{e.source ?? ""}</td>
+                  <td title={e.transport ? `via ${e.transport}` : undefined}>{e.data_origin ?? ""}</td>
                   <td className={KIND_CLASS[e.kind]}>{e.kind}</td>
                   <td>{e.cell ?? ""}</td>
                   <td className="wrap">{e.message}</td>

@@ -14,7 +14,7 @@ test("export links point at the backend CSV endpoints", async () => {
 });
 
 test("history rows with nulls render N/A and bypassed cells are marked", async () => {
-  const row = { id: 1, timestamp: "2026-11-05T04:00:00Z", source: "HARDWARE", pack_voltage: null, pack_current: 1.1,
+  const row = { id: 1, timestamp: "2026-11-05T04:00:00Z", transport: "SERIAL", data_origin: "UNVERIFIED", pack_voltage: null, pack_current: 1.1,
     cell1_voltage: 3.7, cell2_voltage: 2.95, cell2_bypassed: 1, cell3_voltage: null, cell4_voltage: 3.7,
     balancing: null, fault_active: 1, fault_cell: 2, fault_type: "UNDERVOLTAGE", system_state: "ISOLATED" };
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([row]) })));

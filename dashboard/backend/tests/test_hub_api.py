@@ -81,7 +81,7 @@ def api(tmp_path):
 # --- hub ---------------------------------------------------------------------
 
 def test_publish_sends_identical_packet_to_all_clients_and_saves_once(db):
-    hub = TelemetryHub(source=None, source_name="MOCK", db_path=db)
+    hub = TelemetryHub(source=None, transport="MOCK", db_path=db)
     a, b, c = FakeWS(), FakeWS(), FakeWS()
     hub.clients |= {a, b, c}
     asyncio.run(hub.publish(packet_at("demo", 7)))
@@ -91,7 +91,7 @@ def test_publish_sends_identical_packet_to_all_clients_and_saves_once(db):
 
 
 def test_broken_client_is_dropped_others_still_served(db):
-    hub = TelemetryHub(source=None, source_name="MOCK", db_path=db)
+    hub = TelemetryHub(source=None, transport="MOCK", db_path=db)
     good, bad = FakeWS(), FakeWS(fail=True)
     hub.clients |= {good, bad}
     asyncio.run(hub.publish(packet_at("demo", 1)))
@@ -103,7 +103,7 @@ def test_db_failure_is_counted_and_stream_continues(db, monkeypatch):
     def boom(*a, **k):
         raise sqlite3.OperationalError("disk full")
     monkeypatch.setattr("hub.save_telemetry", boom)
-    hub = TelemetryHub(source=None, source_name="MOCK", db_path=db)
+    hub = TelemetryHub(source=None, transport="MOCK", db_path=db)
     ws = FakeWS()
     hub.clients.add(ws)
     asyncio.run(hub.publish(packet_at("demo", 1)))
@@ -112,7 +112,7 @@ def test_db_failure_is_counted_and_stream_continues(db, monkeypatch):
 
 
 def test_unsafe_reading_is_kept_flagged_and_logged(db):
-    hub = TelemetryHub(source=None, source_name="HARDWARE", db_path=db)
+    hub = TelemetryHub(source=None, transport="SERIAL", db_path=db)
     ws = FakeWS()
     hub.clients.add(ws)
     p = packet_at("normal", 0)
@@ -128,7 +128,7 @@ def test_unsafe_reading_is_kept_flagged_and_logged(db):
 
 
 def test_impossible_reading_is_nulled_but_packet_kept(db):
-    hub = TelemetryHub(source=None, source_name="HARDWARE", db_path=db)
+    hub = TelemetryHub(source=None, transport="SERIAL", db_path=db)
     ws = FakeWS()
     hub.clients.add(ws)
     p = packet_at("normal", 0)
@@ -142,7 +142,7 @@ def test_impossible_reading_is_nulled_but_packet_kept(db):
 
 
 def test_events_follow_fault_lifecycle(db):
-    hub = TelemetryHub(source=None, source_name="MOCK", db_path=db)
+    hub = TelemetryHub(source=None, transport="MOCK", db_path=db)
 
     async def run():
         for t in range(0, 125):  # one full 122-tick loop, then back into NORMAL
@@ -158,7 +158,7 @@ def test_events_follow_fault_lifecycle(db):
 
 
 def test_status_payload_stale_logic():
-    hub = TelemetryHub(source=None, source_name="MOCK")
+    hub = TelemetryHub(source=None, transport="MOCK")
     assert hub.status_payload()["stale"] is True  # nothing received yet
     hub._last_mono = time.monotonic()
     assert hub.status_payload()["stale"] is False
@@ -196,17 +196,18 @@ def test_ws_sends_status_first_then_latest(api):
     wait_for(lambda: hub.published == 1)
     with client.websocket_connect("/ws") as ws:
         first = ws.receive_json()
-        assert first["type"] == "status" and first["data"]["source"] == "MOCK"
+        assert first["type"] == "status" and first["data"]["transport"] == "MOCK" and first["data"]["data_origin"] == "SYNTHETIC"
         assert ws.receive_json() == {"type": "telemetry", "data": hub.latest.model_dump()}
 
 
 def test_disconnect_reaches_browser_via_status(tmp_path):
     src = QueueSource(connected=False)  # e.g. serial port unplugged
-    app = create_app(Config(db_path=str(tmp_path / "d.db"), source="HARDWARE"), source=src, heartbeat_s=0.05)
+    app = create_app(Config(db_path=str(tmp_path / "d.db"), transport="SERIAL"), source=src, heartbeat_s=0.05)
     with TestClient(app) as client, client.websocket_connect("/ws") as ws:
         recv(ws, "status")
         st = recv(ws, "status")  # heartbeat, with no telemetry flowing at all
-        assert st["source"] == "HARDWARE" and st["connected"] is False and st["stale"] is True
+        assert st["transport"] == "SERIAL" and st["data_origin"] == "UNVERIFIED"
+        assert st["connected"] is False and st["stale"] is True
 
 
 def test_status_events_history_and_legacy_endpoints(api):
@@ -214,9 +215,9 @@ def test_status_events_history_and_legacy_endpoints(api):
     src.q.put(packet_at("undervoltage", 70))  # ticks 62-101 are the isolated phase
     wait_for(lambda: hub.published == 1)
     st = client.get("/api/status").json()
-    assert st["source"] == "MOCK" and st["connected"] and st["packets_ok"] == 1 and st["stale"] is False
+    assert st["transport"] == "MOCK" and st["data_origin"] == "SYNTHETIC" and st["connected"] and st["packets_ok"] == 1 and st["stale"] is False
     row = client.get("/api/history?limit=5").json()[0]
-    assert row["source"] == "MOCK" and row["system_state"] == "ISOLATED"
+    assert row["transport"] == "MOCK" and row["data_origin"] == "SYNTHETIC" and row["system_state"] == "ISOLATED"
     assert row["fault_cell"] == 2 and isinstance(row["fault_cell"], int)
     assert row["cell2_bypassed"] == 1 and row["soc"] is None
     ev = client.get("/api/events").json()
@@ -232,7 +233,7 @@ def test_mock_source_end_to_end(tmp_path):
     with TestClient(app) as client, client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
         got_a = [recv(a, "telemetry") for _ in range(15)]
         got_b = [recv(b, "telemetry") for _ in range(15)]
-    assert all(m["source"] == "MOCK" for m in got_a)
+    assert all(m["transport"] == "MOCK" and m["data_origin"] == "SYNTHETIC" for m in got_a)
     by_seq_a = {m["seq"]: m for m in got_a}
     common = [m for m in got_b if m["seq"] in by_seq_a]
     assert len(common) >= 10 and all(by_seq_a[m["seq"]] == m for m in common)
@@ -242,15 +243,32 @@ def test_mock_source_end_to_end(tmp_path):
 # --- config / sources ----------------------------------------------------------
 
 def test_source_selection(monkeypatch):
-    assert isinstance(make_source(Config(source="MOCK")), MockSource)
-    assert isinstance(make_source(Config(source="HARDWARE", serial_port="/dev/x")), SerialSource)
-    monkeypatch.setenv("BMS_SOURCE", "hardware")
+    assert isinstance(make_source(Config(transport="MOCK")), MockSource)
+    s = make_source(Config(transport="SERIAL", serial_port="/dev/x", serial_data_origin="MEASURED"))
+    assert isinstance(s, SerialSource) and s.origin == "MEASURED"
+    monkeypatch.setenv("BMS_SOURCE", "hardware")  # older spelling still works
     monkeypatch.setenv("BMS_SERIAL_PORT", "/dev/ttyUSB9")
     c = Config.from_env()
-    assert c.source == "HARDWARE" and c.serial_port == "/dev/ttyUSB9"
-    monkeypatch.setenv("BMS_SOURCE", "wifi")
+    assert c.transport == "SERIAL" and c.serial_port == "/dev/ttyUSB9" and c.serial_data_origin == "UNVERIFIED"
+    monkeypatch.setenv("BMS_TRANSPORT", "serial")
+    monkeypatch.setenv("BMS_SERIAL_DATA_ORIGIN", "measured")
+    assert Config.from_env().serial_data_origin == "MEASURED"
+    monkeypatch.setenv("BMS_SERIAL_DATA_ORIGIN", "real")
     with pytest.raises(ValueError):
         Config.from_env()
+    monkeypatch.setenv("BMS_SERIAL_DATA_ORIGIN", "UNVERIFIED")
+    monkeypatch.setenv("BMS_TRANSPORT", "wifi")
+    with pytest.raises(ValueError):
+        Config.from_env()
+
+
+def test_serial_app_status_reports_configured_origin(tmp_path):
+    for origin in ("UNVERIFIED", "MEASURED"):
+        app = create_app(Config(db_path=str(tmp_path / f"{origin}.db"), transport="SERIAL",
+                                serial_data_origin=origin), source=QueueSource())
+        with TestClient(app) as client:
+            st = client.get("/api/status").json()
+            assert (st["transport"], st["data_origin"]) == ("SERIAL", origin)
 
 
 # --- database migration --------------------------------------------------------
@@ -278,6 +296,21 @@ def test_migration_backs_up_first_and_keeps_legacy_rows(tmp_path):
     assert database.count_rows(path) == 0
     database.save_telemetry(packet_at("demo", 0), path)
     assert database.count_rows(path) == 1 and database.count_rows(path, "telemetry_legacy") == 3
+
+
+def test_migration_from_v2_keeps_telemetry_and_events(tmp_path):
+    path = str(tmp_path / "v2.db")
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE telemetry (id INTEGER PRIMARY KEY, timestamp TEXT, source TEXT)")
+    conn.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, timestamp TEXT, source TEXT, kind TEXT)")
+    conn.executemany("INSERT INTO telemetry (timestamp, source) VALUES (?, 'MOCK')", [("a",), ("b",)])
+    conn.execute("INSERT INTO events (timestamp, source, kind) VALUES ('a', 'MOCK', 'STATE')")
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit(); conn.close()
+    assert database.init_db(path) is not None
+    assert database.count_rows(path, "telemetry_legacy_v2") == 2
+    assert database.count_rows(path, "events_legacy_v2") == 1
+    assert database.count_rows(path) == 0 and database.count_rows(path, "events") == 0
 
 
 def test_migration_from_v1_keeps_rows_in_separate_table(tmp_path):

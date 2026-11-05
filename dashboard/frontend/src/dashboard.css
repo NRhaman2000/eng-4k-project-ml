@@ -29,13 +29,16 @@
 
 .status { margin: 16px 0 8px; text-align: left; }
 .banner { padding: 8px 14px; border-radius: 8px; margin-bottom: 8px; font-weight: 600; font-size: 15px; }
-.banner-mock { background: var(--warn-bg); color: var(--warn); border: 1px dashed var(--warn); }
-.banner-hw { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+.banner-synthetic { background: var(--warn-bg); color: var(--warn); border: 1px dashed var(--warn); }
+.banner-unverified { background: var(--muted-bg); color: var(--text-h); border: 2px solid var(--warn); }
+.banner-measured { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
 .banner-stale { background: var(--fault-bg); color: var(--fault); border: 1px solid var(--fault); }
 .status-row { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 15px; }
 .badge { padding: 1px 8px; border-radius: 6px; font-family: var(--mono); }
-.badge-mock { background: var(--warn-bg); color: var(--warn); }
-.badge-hardware { background: var(--ok-bg); color: var(--ok); }
+.badge { background: var(--code-bg); }
+.badge-synthetic { background: var(--warn-bg); color: var(--warn); }
+.badge-unverified { background: var(--muted-bg); color: var(--warn); }
+.badge-measured { background: var(--ok-bg); color: var(--ok); }
 .conn-open { color: var(--ok); }
 .conn-connecting, .conn-reconnecting, .conn-unknown { color: var(--warn); }
 .conn-down { color: var(--fault); }

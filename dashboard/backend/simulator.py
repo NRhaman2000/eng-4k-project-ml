@@ -119,7 +119,8 @@ def packet_at(scenario, tick, seed=0, timestamp=None):
     i = round(pack["i"] + rng.uniform(-0.05, 0.05), 3)
     return TelemetryPacket(
         timestamp=timestamp or datetime.now(timezone.utc).isoformat(),
-        source="MOCK",
+        transport="MOCK",
+        data_origin="SYNTHETIC",
         seq=tick,
         mcu_ms=int(t * 1000),
         scenario=f"{scenario}:{name}",

@@ -56,3 +56,25 @@ export function mergeEvents(a, b, max = 200) {
   }
   return out.slice(0, max);
 }
+
+/**
+ * Banner for a transport (how data arrives) + data origin (whether it is real).
+ * Anything not explicitly MEASURED is never presented as hardware data.
+ */
+export function originInfo(transport, origin) {
+  if (!transport && !origin) return null;
+  if (origin === "SYNTHETIC" && transport === "MOCK") {
+    return { kind: "synthetic", title: "SIMULATED DATA (MOCK)",
+             text: "In-process simulator. Values are synthetic, not measured from the battery." };
+  }
+  if (origin === "SYNTHETIC") {
+    return { kind: "synthetic", title: "SERIAL TEST / SYNTHETIC",
+             text: "Received over the serial port, but the frames are synthetic test data, not from the BMS hardware." };
+  }
+  if (origin === "MEASURED") {
+    return { kind: "measured", title: "HARDWARE: MEASURED",
+             text: "Serial data declared by the operator as measured from the BMS." };
+  }
+  return { kind: "unverified", title: "SERIAL / ORIGIN NOT DECLARED",
+           text: "Data arrives over the serial port but is not confirmed to come from the STM32. Treat it as unverified." };
+}

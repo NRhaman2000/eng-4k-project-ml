@@ -6,7 +6,7 @@ balancing) or an advisory dashboard warning. Nothing here makes a decision.
 
 
 def diff_events(prev, cur):
-    base = {"timestamp": cur.timestamp, "source": cur.source, "seq": cur.seq}
+    base = {"timestamp": cur.timestamp, "transport": cur.transport, "data_origin": cur.data_origin, "seq": cur.seq}
     out = []
 
     def add(kind, message, cell=None, detail=None):
