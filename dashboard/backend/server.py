@@ -3,10 +3,14 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+from datetime import datetime
+
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import Config
+from export import events_csv, telemetry_csv
 from database import get_legacy_telemetry, get_recent_events, get_recent_telemetry, init_db
 from hub import TelemetryHub
 from serial_reader import SerialSource
@@ -71,6 +75,21 @@ def create_app(config=None, source=None, heartbeat_s=1.0):
     @app.get("/api/history")
     def telemetry_history(limit: int = Query(50, ge=1, le=5000)):
         return get_recent_telemetry(limit, config.db_path)
+
+    def csv_response(chunks, kind):
+        name = f"bms_{kind}_{config.source.lower()}_{datetime.now():%Y%m%d-%H%M%S}.csv"
+        return StreamingResponse(chunks, media_type="text/csv; charset=utf-8",
+                                 headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.get("/api/export/telemetry.csv")
+    def export_telemetry():
+        """All stored telemetry rows, oldest first. Units in headers; empty = not reported."""
+        return csv_response(telemetry_csv(config.db_path), "telemetry")
+
+    @app.get("/api/export/events.csv")
+    def export_events():
+        """All fault, isolation, balancing, state and warning events, oldest first."""
+        return csv_response(events_csv(config.db_path), "events")
 
     @app.websocket("/ws")
     async def telemetry_websocket(websocket: WebSocket):

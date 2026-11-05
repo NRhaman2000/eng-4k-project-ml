@@ -81,6 +81,9 @@ ul.plain { list-style: none; padding: 0; margin: 6px 0; font-size: 14px; }
 .chart-head h2 { margin-bottom: 0; }
 .seg button { font: inherit; font-size: 14px; padding: 4px 10px; margin-left: 4px; border-radius: 6px;
   border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+.seg a.button { display: inline-block; font-size: 14px; padding: 4px 10px; margin-left: 4px; border-radius: 6px;
+  border: 1px solid var(--border); color: var(--text-h); text-decoration: none; }
+.seg a.button:hover { border-color: var(--text-h); }
 .seg button[aria-pressed="true"] { border-color: var(--text-h); color: var(--text-h); font-weight: 600; }
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
