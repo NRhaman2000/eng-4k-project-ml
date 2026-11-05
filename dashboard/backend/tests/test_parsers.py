@@ -60,8 +60,6 @@ def test_key_value_missing_fields_become_none():
     b"C1=3.7,STATE=NORMAL,I=abc",                      # not a number
     b"C1=3.7,I=1.0",                                   # no STATE
     b"C1=3.7,STATE=EXPLODED",                          # unknown state
-    b"C1=9.9,STATE=NORMAL",                            # implausible cell voltage
-    b"T1=500,STATE=NORMAL",                            # implausible temperature
     b'{"v":0}*00000000',                               # bad CRC
     b"\xff\xfe=1,STATE=NORMAL",                        # not ASCII
 ])
@@ -77,8 +75,16 @@ def test_json_frame_with_bad_cell_ids_rejected():
         parse_line(encode_frame(p))
 
 
-def test_json_frame_with_out_of_range_soh_rejected():
+def test_out_of_range_values_parse_and_are_left_to_limits():
+    # range checks moved to limits.assess so unsafe readings are never dropped at parse time
     p = make_payload(1, 250, random.Random(0))
     p["cells"][0]["soh"] = 140
+    assert parse_line(encode_frame(p)).cells[0].soh == 140
+    assert parse_line("C1=9.9,T1=500,STATE=NORMAL").cells[0].voltage == 9.9
+
+
+def test_non_numeric_json_value_rejected():
+    p = make_payload(1, 250, random.Random(0))
+    p["cells"][0]["v"] = "high"
     with pytest.raises(ParseError):
         parse_line(encode_frame(p))

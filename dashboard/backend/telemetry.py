@@ -2,8 +2,9 @@
 produces a TelemetryPacket; the frontend and the database only see this shape.
 
 None means "not reported". It is never replaced with an invented value.
-Bounds are physical plausibility limits used to reject corrupted data, not
-safety thresholds: those live in the STM32 firmware.
+Structural rules (cell ids, states, types) are enforced here. Measurement
+ranges are not: limits.py sorts readings into plausible / impossible / unsafe
+so that a valid but dangerous reading is never thrown away.
 """
 from typing import List, Literal, Optional
 
@@ -15,18 +16,35 @@ Source = Literal["MOCK", "HARDWARE"]
 
 class CellTelemetry(BaseModel):
     id: int = Field(ge=1, le=4)
-    voltage: Optional[float] = Field(default=None, ge=0.0, le=5.0)
-    temperature: Optional[float] = Field(default=None, ge=-40.0, le=150.0)
-    soh: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    voltage: Optional[float] = None
+    temperature: Optional[float] = None
+    soh: Optional[float] = None
     balancing: Optional[bool] = None
     bypassed: Optional[bool] = None
     fault: Optional[str] = None
 
 
 class FaultTelemetry(BaseModel):
+    """What the FIRMWARE reports. The dashboard never sets this itself."""
     active: bool = False
     cell: Optional[int] = Field(default=None, ge=1, le=4)
     type: Optional[str] = None
+
+
+class InvalidReading(BaseModel):
+    """A reading outside what the sensor can physically produce. Raw value kept, field nulled."""
+    field: str           # e.g. "cells.2.voltage", "pack_current"
+    value: str           # raw value as text (may be NaN/inf, which JSON can't carry)
+    reason: str
+
+
+class TelemetryWarning(BaseModel):
+    """Advisory, host-computed display warning. Not a fault, triggers nothing."""
+    code: str            # CELL_UNDERVOLTAGE, CELL_OVERVOLTAGE, CELL_OVERTEMPERATURE, CELL_UNDERTEMPERATURE, PACK_OVERCURRENT
+    cell: Optional[int] = None
+    value: float
+    limit: float
+    message: str
 
 
 class TelemetryPacket(BaseModel):
@@ -35,14 +53,16 @@ class TelemetryPacket(BaseModel):
     seq: Optional[int] = Field(default=None, ge=0)
     mcu_ms: Optional[int] = Field(default=None, ge=0)
     scenario: Optional[str] = None  # mock only
-    pack_voltage: Optional[float] = Field(default=None, ge=0.0, le=25.0)
-    pack_current: Optional[float] = Field(default=None, ge=-50.0, le=50.0)
-    soc: Optional[float] = Field(default=None, ge=0.0, le=100.0)
-    pack_soh: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    pack_voltage: Optional[float] = None
+    pack_current: Optional[float] = None
+    soc: Optional[float] = None
+    pack_soh: Optional[float] = None
     cells: List[CellTelemetry]
     balancing: Optional[bool] = None
     fault: FaultTelemetry = Field(default_factory=FaultTelemetry)
     system_state: SystemState
+    invalid: List[InvalidReading] = Field(default_factory=list)
+    warnings: List[TelemetryWarning] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def four_distinct_cells(self):
