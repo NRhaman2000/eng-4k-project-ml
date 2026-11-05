@@ -225,35 +225,15 @@ socat is missing.
 
 ## 10. November 13 demonstration (MOCK mode)
 
-**Before (10 min):**
-1. `git pull`, then `pip install -r requirements-dev.txt` and `npm install` (section 1).
-2. Use a clean demo database, so the history and CSV show only the demo:
-   `cd dashboard/backend && BMS_DB_PATH=demo.db python -m uvicorn main:app`
-3. `cd dashboard/frontend && npm run dev`, then open http://localhost:5173 in **two** browser windows side by side.
-4. Check both show the orange **SIMULATED DATA (MOCK)** banner, Backend **Connected**, and four cell cards.
+The full step-by-step procedure (preparation, exact macOS startup commands, the timed
+demo script, live checks and troubleshooting) is in
+**[`docs/DEMO_PROCEDURE.md`](docs/DEMO_PROCEDURE.md)**. The latest verification results are
+in [`docs/VERIFICATION_REPORT.md`](docs/VERIFICATION_REPORT.md).
 
-**Demo loop timeline** (`demo` scenario, 88 s, repeats; times from backend start or loop start):
-
-| Time | State | Point to |
-| --- | --- | --- |
-| 0-10 s | NORMAL | four cells about 3.70 V, pack about 14.8 V, live charts |
-| 10-20 s | BALANCING | cells 2 and 3 marked BALANCING (blue), the spread shrinking, balancing activity list |
-| 30-35 s | NORMAL + warning | cell 2 voltage falls in the chart; an orange advisory warning appears below 3.0 V |
-| 35 s | FAULT_DETECTED (0.5 s) | firmware reports UNDERVOLTAGE on cell 2; easy to miss live, so show it in the history table afterwards |
-| 35.5-50.5 s | ISOLATED | cell 2 card **ISOLATED (bypassed)**, pack voltage steps down to about 11.1 V (3S), history shows FAULT_REPORTED then CELL_BYPASSED |
-| 50.5 s | NORMAL | FAULT_CLEARED and CELL_RESTORED: recovery and reconfiguration |
-| 60.5-76 s | NORMAL, FAULT_DETECTED, ISOLATED | cell 4 overtemperature past 60 °C, isolated while cooling |
-| 86-88 s | FAULT_DETECTED | pack overcurrent 6.2 A (pack-level, no cell) |
-
-**Talking points / live checks:**
-- Both windows show identical values: one backend loop, broadcast to every client, one database row per packet.
-- **Monitoring only:** the fault and isolation decisions shown are reported by the firmware. The dashboard sends no commands.
-- **Resilience:** press Ctrl+C on the backend. Both windows show **Reconnecting…** and a red **STALE** banner, and keep the last values. Restart it, and they recover within about 5 s on their own.
-- **Data export:** click **Export telemetry CSV** and **Export events CSV**. Open in Excel and show the units in the headers, `transport = MOCK`, `data_origin = SYNTHETIC`, and the isolation events with timestamps.
-- Slower pace if needed: `BMS_MOCK_INTERVAL=0.5` doubles every phase (176 s loop).
-
-**Say clearly:** all data in the demo is synthetic. The serial path was
-validated with a PTY loopback (Section 6.3.4), not with the STM32.
+In short: start the backend with a demo database
+(`BMS_DB_PATH=demo.db python -m uvicorn main:app`), start the frontend (`npm run dev`), and
+open http://localhost:5173 in two windows. The `demo` scenario loops every 88 s through
+NORMAL, BALANCING, FAULT_DETECTED and ISOLATED. **All demo data is synthetic.**
 
 ## 11. Architecture
 
