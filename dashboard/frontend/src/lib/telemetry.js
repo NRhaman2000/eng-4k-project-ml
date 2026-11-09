@@ -76,5 +76,5 @@ export function originInfo(transport, origin) {
              text: "Serial data declared by the operator as measured from the BMS." };
   }
   return { kind: "unverified", title: "SERIAL / ORIGIN NOT DECLARED",
-           text: "Data arrives over the serial port but is not confirmed to come from the STM32. Treat it as unverified." };
+           text: "Data arrives over the serial port but is not confirmed to come from the ESP32-S3. Treat it as unverified." };
 }
