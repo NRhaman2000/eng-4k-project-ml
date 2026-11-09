@@ -1,7 +1,7 @@
 # November 13 MVP demo: procedure (MOCK mode, macOS)
 
 Everything shown is **synthetic data from the mock simulator**. The page says so
-in an orange **SIMULATED DATA (MOCK)** banner. No STM32 is involved. The demo needs
+in an orange **SIMULATED DATA (MOCK)** banner. No ESP32-S3 is involved. The demo needs
 no internet once installed (verified: the page requests nothing outside the laptop).
 
 ## A. Before demo day (needs internet, about 15 min)
@@ -89,7 +89,7 @@ Then three live checks:
 **Say clearly:**
 - All data is synthetic.
 - Faults and isolation shown are what the firmware is *expected* to report. The dashboard sends no commands to the BMS.
-- The serial path is implemented and was tested with a pseudo-terminal loopback and synthetic frames, not with the STM32 yet.
+- The serial path is implemented and was tested with a pseudo-terminal loopback and synthetic frames, not with the ESP32-S3 yet.
 
 ## D. If something goes wrong
 
