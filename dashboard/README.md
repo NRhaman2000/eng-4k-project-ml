@@ -3,7 +3,7 @@
 Receive-only monitoring for the ENG4K 4S Fault-Tolerant Active BMS. The
 dashboard displays and logs what the firmware reports. It sends nothing to
 the MCU, and every bypass, isolation and shutdown decision stays in the
-STM32 firmware.
+ESP32-S3 firmware.
 
 **Status (Nov 2026):** works end to end on mock data. The serial path has
 been tested only against a PTY loopback with synthetic frames (see
@@ -52,8 +52,8 @@ Settings are environment variables:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `BMS_TRANSPORT` | `MOCK` | `MOCK` (in-process simulator) or `SERIAL` (serial port). `BMS_SOURCE=HARDWARE` still works as an alias for `SERIAL` |
-| `BMS_SERIAL_DATA_ORIGIN` | `UNVERIFIED` | what SERIAL data is: `UNVERIFIED`, `MEASURED` (set this only when the STM32 is really connected) or `SYNTHETIC` |
-| `BMS_SERIAL_PORT` | `/dev/ttyACM0` | e.g. `/dev/cu.usbmodem1103` on macOS (use `cu.`, not `tty.`), `COM5` on Windows |
+| `BMS_SERIAL_DATA_ORIGIN` | `UNVERIFIED` | what SERIAL data is: `UNVERIFIED`, `MEASURED` (set this only when the ESP32-S3 is really connected) or `SYNTHETIC` |
+| `BMS_SERIAL_PORT` | `/dev/ttyACM0` | e.g. `/dev/cu.usbmodem1103` (ESP32-S3 native USB) or `/dev/cu.usbserial-0001` (DevKitC-1 UART port) on macOS (use `cu.`, not `tty.`), `COM5` on Windows |
 | `BMS_BAUD` | `115200` | |
 | `BMS_MOCK_SCENARIO` | `demo` | see section 3 |
 | `BMS_MOCK_INTERVAL` | `0.25` | seconds per mock packet (`0.5` halves the speed) |
@@ -85,7 +85,7 @@ BMS_MOCK_SCENARIO=demo BMS_MOCK_INTERVAL=0.5 python -m uvicorn main:app   # slow
 Mock SoH values are fixed synthetic numbers (92.0 / 85.0 / 89.5 / 90.5 %),
 not TinyML output. Mock SoC and pack SoH are not reported, so they show N/A.
 
-## 4. Connecting the STM32 (once the protocol is confirmed)
+## 4. Connecting the ESP32-S3 (once the protocol is confirmed)
 
 1. Agree the frame format with CE. The contract to confirm is in
    [`docs/TELEMETRY_CONTRACT.md`](docs/TELEMETRY_CONTRACT.md): one JSON line
@@ -95,8 +95,13 @@ not TinyML output. Mock SoC and pack SoH are not reported, so they show N/A.
 2. If the confirmed format differs, change only `tools/serial_frame.py`
    (framing and CRC) and `frame_to_packet()` in `backend/serial_reader.py`
    (field mapping). Nothing else depends on the wire format.
-3. Find the port: `ls /dev/cu.usbmodem*` (macOS) or `ls /dev/ttyACM*` (Linux).
+3. Find the port: `ls /dev/cu.usbmodem* /dev/cu.usbserial*` (macOS) or `ls /dev/ttyACM* /dev/ttyUSB*` (Linux).
+   The ESP32-S3 native USB port (USB Serial/JTAG) appears as `usbmodem` / `ttyACM`; the
+   ESP32-S3-DevKitC-1 "UART" port (USB-to-UART bridge) appears as `usbserial` (or `SLAB_USBtoUART`) / `ttyUSB`.
+   Use whichever port the firmware sends telemetry on (to be confirmed in the contract).
    On macOS, open the `cu.` device: the `tty.` one can block on open while it waits for carrier detect.
+   Opening the DevKitC-1 UART port can reset the ESP32-S3 through its DTR/RTS auto-reset circuit, so
+   the first lines after opening may be boot messages; the harness reports these as non-frame text.
    Before starting the dashboard, check the firmware's output with the receive-only harness:
    `python ../tools/firmware_harness.py --port /dev/cu.usbmodem1103 --duration 60` (section 13).
 4. Start, declaring that this port carries real measurements:
@@ -274,7 +279,7 @@ SERIAL:    serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
 
 ## 12. Known limitations
 
-- **No STM32 testing.** Latency and delivery figures in section 13 are SIMULATED. SERIAL transport was exercised only through a PTY with synthetic and unverified test frames, and the frame format is provisional. MEASURED has never been used with real data yet.
+- **No ESP32-S3 testing.** Latency and delivery figures in section 13 are SIMULATED. SERIAL transport was exercised only through a PTY with synthetic and unverified test frames, and the frame format is provisional. MEASURED has never been used with real data yet.
 - Mock SoH values are fixed synthetic numbers, not model output. Mock SoC and pack SoH are not reported.
 - Charge-transfer direction is not in schema v0, so it shows as "Not reported by firmware".
 - The warning thresholds are provisional display values. Align them with the firmware's thresholds once known.
@@ -285,7 +290,7 @@ SERIAL:    serial_reader.SerialSource (JSON frame v0 or legacy key=value) ─┤
 - The frontend is JavaScript. A TypeScript migration is deferred until after the MVP.
 - The repo root README's dashboard sections predate this work. This file is the current reference.
 
-## 13. Firmware integration and performance (synthetic until the STM32 is connected)
+## 13. Firmware integration and performance (synthetic until the ESP32-S3 is connected)
 
 ### 13.1 Checking firmware output against the contract
 
@@ -335,7 +340,7 @@ synthetic frames), not hardware:**
 | First frame after replug | 3.19 s (dominated by the backend's 1-5 s retry backoff) |
 
 REQ-SE-01 (display within 500 ms) passes with a wide margin on the loopback.
-It must be re-measured on the STM32 before it can be claimed.
+It must be re-measured on the ESP32-S3 before it can be claimed.
 
 ### 13.3 macOS: run everything locally
 
@@ -356,7 +361,7 @@ cd ~/eng-4k-project-ml/dashboard/backend && source .venv/bin/activate && python 
 cd ~/eng-4k-project-ml/dashboard/frontend && npm run dev         # open http://localhost:5173
 
 # with the board plugged in (receive-only check first, then the dashboard)
-ls /dev/cu.usbmodem*
+ls /dev/cu.usbmodem* /dev/cu.usbserial*      # ESP32-S3 native USB or DevKitC-1 UART port
 python ../tools/firmware_harness.py --port /dev/cu.usbmodemXXXX --duration 60 --json-out fw_report.json
 BMS_TRANSPORT=SERIAL BMS_SERIAL_PORT=/dev/cu.usbmodemXXXX python -m uvicorn main:app
 ```
