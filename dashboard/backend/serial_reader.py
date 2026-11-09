@@ -1,4 +1,4 @@
-"""SERIAL transport: reads telemetry lines from a serial port (the STM32, or a test feeder).
+"""SERIAL transport: reads telemetry lines from a serial port (the ESP32-S3, or a test feeder).
 
 Receive-only. This module never writes to the port: the dashboard has no
 command path to the MCU (REQ-SE-03).
