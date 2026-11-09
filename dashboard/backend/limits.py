@@ -8,7 +8,7 @@ Unsafe: physically possible but outside normal operation (UV, OV, OT, OC). The
 
 These are DISPLAY thresholds only. They are provisional, they don't change
 packet.fault, and they trigger nothing. Every protection decision (bypass,
-isolation, shutdown) is made by the STM32 firmware.
+isolation, shutdown) is made by the ESP32-S3 firmware.
 """
 import math
 
