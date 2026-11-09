@@ -1,7 +1,7 @@
 # Telemetry Contract (provisional, schema v0)
 
 **Status: PROVISIONAL, awaiting confirmation from the Computer Engineering / firmware team.**
-Nothing here has been tested with the STM32. The dashboard implements exactly this
+Nothing here has been tested with the ESP32-S3. The dashboard implements exactly this
 contract today (`dashboard/tools/serial_frame.py`, `contract.py`,
 `dashboard/backend/serial_reader.py`). If the firmware needs something different, tell
 us and the dashboard side changes: the firmware does not have to match these names.
