@@ -1,7 +1,7 @@
 # Dashboard verification report: November 13 MVP readiness
 
 **Date:** 2026-11-05. **Commit verified:** `main` at `5fb0afd` (PR #1 dashboard + PR #2 integration harness).
-**Mode:** MOCK only. **All data is synthetic. No STM32 hardware was involved in any test below.**
+**Mode:** MOCK only. **All data is synthetic. No ESP32-S3 hardware was involved in any test below.**
 
 Where it ran: automated tests in the Linux VM on the dev Mac (Python 3.10, Node 22). Browser
 checks ran in headless Chrome (Playwright) in a Linux sandbox, from a fresh clone of `main`,
@@ -74,7 +74,7 @@ No software defect was found that would block the MOCK demonstration.
 
 ## 6. Known limitations (unchanged)
 
-- No STM32 testing. The serial path is tested only with a PTY loopback and synthetic frames;
+- No ESP32-S3 testing. The serial path is tested only with a PTY loopback and synthetic frames;
   the frame format is provisional (docs/TELEMETRY_CONTRACT.md).
 - Mock SoH values are fixed synthetic numbers. SoC and balancing direction are not reported.
 - Warning thresholds (3.0 V, 4.2 V, 60 °C, 5 A) are provisional display values, not the firmware's.
