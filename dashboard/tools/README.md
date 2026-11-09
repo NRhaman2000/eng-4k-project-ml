@@ -3,9 +3,9 @@
 Checks that the provisional telemetry frame (one JSON line every 250 ms at
 115,200 baud 8N1) gets from a sender to a receiver over a serial link intact.
 It uses a pseudo-terminal pair as a virtual null-modem cable, so it runs
-without the STM32 or either board.
+without the ESP32-S3 or either board.
 
-**What this does not prove:** anything about the real STM32 UART, the
+**What this does not prove:** anything about the real ESP32-S3 UART, the
 ribbon connector, or the firmware. A PTY does not enforce baud-rate timing
 (bytes move as fast as the OS allows), so wire load is computed from bytes
 sent, not measured on a wire. Hardware integration is not done.
