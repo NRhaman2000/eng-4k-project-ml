@@ -1,2 +1,2 @@
-test_cell,num_cycles,mae_soh_percent,rmse_soh_percent,max_error_percent,r2_score
-B0018,132,3.7391,4.5673,13.3599,0.6495
+test_cell,num_cycles,mae_soh_percent,rmse_soh_percent,max_error_percent,r2_score,seed_mae_mean,seed_mae_std,seed_mae_min,seed_mae_max,linear_baseline_mae,linear_baseline_max_error
+B0018,132,2.4205,2.6292,4.047,0.8839,2.7007,0.6588,1.4561,3.8,2.2995,4.1942
