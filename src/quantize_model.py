@@ -10,6 +10,8 @@ import sys
 import json
 from pathlib import Path
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
@@ -150,8 +152,8 @@ def run_quantization():
     for i in range(len(X_test)):
         # Quantize float input to int8
         sample_norm = X_test[i]
-        sample_int8 = np.round(sample_norm / in_scale + in_zero_point).astype(np.int8)
-        sample_int8 = np.clip(sample_int8, -128, 127)
+        # Clip BEFORE casting: casting first wraps out-of-range values (200 -> -56).
+        sample_int8 = np.clip(np.round(sample_norm / in_scale + in_zero_point), -128, 127).astype(np.int8)
         sample_int8 = np.expand_dims(sample_int8, axis=0)
 
         interpreter.set_tensor(input_index, sample_int8)
@@ -164,6 +166,9 @@ def run_quantization():
         preds_int8_pct.append(soh_pred_pct)
 
     preds_int8_pct = np.array(preds_int8_pct, dtype=np.float32)
+    q_lo, q_hi = (-128 - in_zero_point) * in_scale, (127 - in_zero_point) * in_scale
+    n_sat = int(((X_test < q_lo) | (X_test > q_hi)).any(axis=1).sum())
+    print(f"  Test samples saturating the INT8 input range: {n_sat}/{len(X_test)}")
 
     # Compute Quantization Discrepancy
     quant_error = np.abs(preds_float_pct - preds_int8_pct)
@@ -189,13 +194,13 @@ def run_quantization():
     print(" [PASS] INT8 model maintains capstone performance criteria (MAE < 4.0%).")
 
     # 9. Plot Float32 vs INT8 Parity Curve
-    cycles = np.arange(1, len(X_test) + 1)
+    cycles = data["cycle_test"]
     plt.figure(figsize=(10, 4.8))
     plt.plot(cycles, y_test_pct, label="Ground Truth (Cell B0018)", color="black", linewidth=1.5, alpha=0.7)
     plt.plot(cycles, preds_float_pct, label="Float32 Model", color="#1f77b4", linewidth=2.0)
     plt.plot(cycles, preds_int8_pct, label="INT8 Quantized Model", color="#d62728", linestyle="--", linewidth=1.8)
     plt.title("Float32 vs. INT8 Quantization Parity (Cell B0018)", fontsize=11, fontweight="bold")
-    plt.xlabel("Discharge Cycle Number")
+    plt.xlabel("Discharge cycle index")
     plt.ylabel("State-of-Health (%)")
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend()

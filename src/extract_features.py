@@ -62,6 +62,11 @@ def extract_cycle_features(voltage: np.ndarray, current: np.ndarray, temp: np.nd
     i_rel = current[idx_load_start:]
     temp_rel = temp[idx_load_start:]
 
+    # Guard: np.interp silently clamps past the end of the data, so require
+    # the discharge to actually cover the evaluation window.
+    if t_rel[-1] < T_END:
+        raise ValueError(f"Discharge lasted only {t_rel[-1]:.0f} s after load-on, need >= {T_END:.0f} s.")
+
     # Interpolate key points along the relative timeline
     v_100 = float(np.interp(T_START, t_rel, v_rel))
     v_1000 = float(np.interp(T_END, t_rel, v_rel))

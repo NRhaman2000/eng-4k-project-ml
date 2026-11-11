@@ -41,6 +41,7 @@ def generate_c_header(tflite_bytes: bytes) -> str:
         "",
         "#include <stdint.h>",
         "",
+        "/* static: safe to include from several .c files without duplicate symbols */",
         "/* Align to 4-byte boundary to prevent Cortex-M memory bus faults */",
         "#if defined(__GNUC__) || defined(__clang__)",
         "  #define DATA_ALIGN(x) __attribute__((aligned(x)))",
@@ -50,9 +51,9 @@ def generate_c_header(tflite_bytes: bytes) -> str:
         "  #define DATA_ALIGN(x)",
         "#endif",
         "",
-        f"const unsigned int g_soh_model_data_len = {total_len};",
+        f"static const unsigned int g_soh_model_data_len = {total_len};",
         "",
-        "const unsigned char g_soh_model_data[] DATA_ALIGN(4) = {"
+        "static const unsigned char g_soh_model_data[] DATA_ALIGN(4) = {"
     ]
 
     # Format bytes in rows of 12 hex values
