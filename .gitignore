@@ -18,10 +18,12 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Data Files (Keep structure via .gitkeep, do NOT push large raw datasets)
-data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+ml/data/raw/*.mat
+ml/data/processed/*.npz
+ml/data/processed/*.csv
 
 # Intermediate Model Files (Allow final exports, ignore intermediate training checkpoints)
 models/saved/*
