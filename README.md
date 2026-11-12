@@ -1,53 +1,43 @@
 # Fault-Tolerant Active BMS: Embedded TinyML State-of-Health (SoH) Inference Pipeline
 
-An ultra-lightweight, deterministic Machine Learning inference pipeline designed for deployment on the ESP32-S3-WROOM-1 microcontroller (dual-core Xtensa LX7) on the project's control board (Board 2). This subsystem monitors battery degradation and estimates State-of-Health (SoH) on a 4-cell series (4S) Lithium-ion battery pack (~14.8V nominal) using the NASA Ames Prognostics Center of Excellence (PCoE) battery aging cohort.
+An ultra-lightweight, deterministic machine learning inference pipeline designed for deployment on the ESP32-S3-WROOM-1 microcontroller (dual-core Xtensa LX7) on the project's control board (Board 2). This subsystem estimates the State-of-Health (SoH) of each cell in a 4-cell series (4S) lithium-ion pack (~14.8 V nominal). It is trained on the NASA Ames Prognostics Center of Excellence (PCoE) battery aging dataset.
 
 ---
 
 ## 1. Project Overview & System Architecture
 
-<<<<<<< HEAD
-This repository hosts the offline machine learning development track (Steps ML-1 through ML-9) of the capstone project. The pipeline ingests raw laboratory cycling logs, extracts low-compute physical degradation features, trains a microcontroller-compatible Multi-Layer Perceptron (MLP) (see CHANGES.md for the improved validation method), applies full integer post-training quantization (INT8), and compiles the model into memory-aligned C header files for on-device execution without an operating system.
-=======
-This repository hosts the offline machine learning development track (Steps ML-1 through ML-9) of the capstone project. The pipeline ingests raw laboratory cycling logs, extracts low-compute physical degradation features, trains a microcontroller-compatible Multi-Layer Perceptron (MLP), applies full integer post-training quantization (INT8), and compiles the model into memory-aligned C header files for on-device execution with TensorFlow Lite for Microcontrollers (TFLM).
->>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
+This repository hosts the offline machine learning development track (Steps ML-1 through ML-9) of the capstone project. The pipeline ingests raw laboratory cycling logs, extracts low-compute physical degradation features, trains a microcontroller-compatible Multi-Layer Perceptron (MLP), applies full integer post-training quantization (INT8), and exports the model as memory-aligned C header files for on-device execution with TensorFlow Lite for Microcontrollers (TFLM). Model and feature choices are made with leave-one-cell-out cross-validation; see [`CHANGES.md`](CHANGES.md) for what changed from the first version and why.
 
 ### Performance & Hardware Footprint Scorecard
 
 | Metric | Target Specification | Achieved Result | Status |
 | --- | --- | --- | --- |
-<<<<<<< HEAD
 | **Model Parameters** | $< 1,000$ weights | **193 parameters** | **PASSED** |
 | **Compiled Flash Footprint** | $< 10.0\text{ KB}$ | **2,704 bytes (2.64 KB)** | **PASSED** |
-| **Runtime SRAM Tensor Arena** | $< 10.0\text{ KB}$ | **$\approx 3.5\text{ KB}$** | **PASSED** |
-| **Leave-one-cell-out CV MAE (B0005/6/7)** | $< 4.00\%\text{ SoH}$ | **2.02% mean, 2.27% worst cell** | **PASSED** |
-| **Holdout Test MAE (Unseen Cell B0018)** | $< 4.00\%\text{ SoH}$ | **2.42% (exported); 2.70 ± 0.66% over 10 seeds** | **PASSED** |
-| **Linear baseline on B0018** | reference | 2.30% | — |
-| **Quantization Parity Drift (Float32 vs. INT8)** | $< 0.50\%\text{ SoH}$ | **0.124% SoH** | **PASSED** |
-| **Target Controller Compatibility** | Ultra-low power MCU | STM32G474RE / ESP32-S3 | **PASSED**<br> |
-=======
-| **Model Parameters** | $< 1,000$ weights | **209 parameters** | **PASSED** |
-| **Compiled Flash Footprint** | $< 10.0\text{ KB}$ | **2,720 bytes (2.66 KB)** | **PASSED** |
 | **Runtime SRAM Tensor Arena** | $< 10.0\text{ KB}$ | **$\approx 3.5\text{ KB}$ (estimated)** | Confirm on target (ML-10) |
-| **Holdout Test MAE (Unseen Cell B0018)** | $< 4.00\%\text{ SoH}$ | **$3.69\%\text{ SoH}$** | **PASSED** |
-| **Quantization Parity Drift (Float32 vs. INT8)** | $< 0.50\%\text{ SoH}$ | **$0.306\%\text{ SoH}$** | **PASSED** |
+| **Leave-one-cell-out CV MAE (B0005/6/7)** | $< 4.00\%\text{ SoH}$ | **2.02% mean, 2.27% worst cell** | **PASSED** |
+| **Holdout Test MAE (Unseen Cell B0018)** | $< 4.00\%\text{ SoH}$ | **2.42% (exported model); 2.70 ± 0.66% over 10 seeds** | **PASSED** |
+| **Holdout Max Error (B0018)** | reference | 4.05% SoH | Reported |
+| **Linear baseline on B0018** | reference | 2.30% MAE | Reported |
+| **Quantization Parity Drift (Float32 vs. INT8)** | $< 0.50\%\text{ SoH}$ | **0.124% SoH** (INT8 test MAE 2.36%) | **PASSED** |
 | **Target Controller** | Embedded MCU, TFLM-compatible | ESP32-S3-WROOM-1 (TFLM + ESP-NN) | On-target profiling scheduled (ML-10) |
 
 > **Controller note:** the STM32G474RE was evaluated as an alternative; the ESP32-S3-WROOM-1 was selected for Board 2 (see Trade Study C in Progress Report 1).
->>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
+
+> **Limitations:** the model is trained on only 3 laboratory cells under a fixed 2 A constant-current discharge at about 24 °C. On B0018 it over-predicts SoH by a fairly steady 2 to 4%, which points to a cell-to-cell offset that more training cells would reduce. The features are only valid when measured under the same test conditions (see Section 2).
 
 ---
 
 ## 2. Physics-Informed Feature Engineering
 
-To avoid consuming microcontroller memory with thousands of raw ADC time-series buffers, the inference engine uses **2 low-compute physical features** (selected by cell-wise CV) evaluated strictly from a partial-discharge evaluation window ($t \in [0\text{ s}, 1000\text{ s}]$):
+To avoid storing thousands of raw ADC samples on the microcontroller, the model uses **2 low-compute physical features**, measured during a diagnostic discharge: rest, then about 2 A constant current for at least 1000 s. Time is measured from load-on, the first sample with $\vert{}I\vert{} \ge 1.5\text{ A}$.
 
-0. *(Computed but not used by the model)* **Ohmic Voltage Drop ($\Delta V_{\text{ohmic}}$):** dropped because NASA's 10–19 s sampling at load-on mixes in polarization and would not match ESP32 sampling. $V_{\text{OCV}} - V_{\text{loaded}}$
-Evaluated at the onset of load engagement ($\vert{}I\vert{} \ge 1.5\text{ A}$). Directly tracks internal DC equivalent series resistance ($R_{\text{int}} \approx 105\text{ m}\Omega$).
-2. **Partial Discharge Window Sag ($\Delta V_{\text{window}}$):** $V(100\text{ s}) - V(1000\text{ s})$
-Evaluates electrochemical depletion and polarization sag across 900 seconds of constant discharge.
-3. **Internal Temperature Rise ($\Delta T$):** $T(1000\text{ s}) - T(0\text{ s})$
-Measures Joulean self-heating ($I^2 R$) during active discharge, mitigating ambient temperature sensor offsets.
+1. **Partial Discharge Window Sag ($\Delta V_{\text{window}}$):** $V(100\text{ s}) - V(1000\text{ s})$
+   Captures electrochemical depletion and polarization sag across 900 s of constant discharge.
+2. **Temperature Rise ($\Delta T$):** $T(1000\text{ s}) - T(0\text{ s})$
+   Captures Joule self-heating ($I^2 R$) during discharge. Using a difference cancels out fixed temperature-sensor offsets.
+
+**Feature selection:** ML-4 also computes the ohmic voltage drop ($V_{\text{OCV}} - V_{\text{loaded}}$ at load-on), discharge slope, mean temperature and mean current. The ohmic drop was left out of the model for two reasons. Leave-one-cell-out cross-validation gave a lower worst-cell error without it (2.27% vs. 3.14%). Also, the NASA logs sample only every 10 to 19 s around load-on, so the recorded "ohmic" drop includes polarization and would not match measurements from a faster-sampling microcontroller.
 
 ---
 
@@ -60,26 +50,31 @@ eng-4k-project-ml/
 │   └── processed/                  # Structured NumPy archives (.npz) and CSV feature matrices
 ├── models/
 │   ├── saved/                      # Native Keras floating-point model (soh_model.keras)
-│   ├── tflite/                     # Full INT8 Quantized FlatBuffer (soh_model_int8.tflite)
-│   ├── c_headers/                  # Microcontroller deployment suite:
-│   │   ├── scaling_params.h        # C float inline ADC feature normalization
-│   │   ├── quantization_params.h   # C inline Affine INT8 quantization routines
-│   │   └── model_data.h            # 4-byte memory-aligned binary model byte array
+│   ├── tflite/                     # Full INT8 quantized FlatBuffer (soh_model_int8.tflite)
+│   ├── c_headers/                  # Microcontroller deployment headers:
+│   │   ├── scaling_params.h        # Feature normalization constants
+│   │   ├── quantization_params.h   # INT8 quantize / dequantize routines
+│   │   └── model_data.h            # 4-byte aligned model byte array
 │   ├── scaling_params.json         # Normalization metadata
 │   ├── quantization_params.json    # Affine scale & zero-point parameters
-│   ├── evaluation_metrics.csv      # Unseen battery holdout scorecard
-│   ├── training_curves.png         # Convergence MSE/MAE loss plots
+│   ├── cv_results.csv              # Leave-one-cell-out cross-validation results
+│   ├── evaluation_metrics.csv      # Holdout scorecard (incl. seed spread and linear baseline)
+│   ├── training_curves.png         # Training loss / MAE curves
 │   ├── test_benchmark_b0018.png    # Ground truth vs. predicted degradation curve
 │   └── quantization_parity.png     # Float32 vs. INT8 parity comparison
 ├── src/
-│   ├── download_data.py            # ML-2: Automated dataset ingestion & integrity gate
+│   ├── config.py                   # Shared settings: features, cells, epochs, seeds
+│   ├── download_data.py            # ML-2: Dataset ingestion & integrity gate
 │   ├── parse_raw_data.py           # ML-3: Discharge cycle isolation & SoH labelling
 │   ├── extract_features.py         # ML-4: Event-synchronized physical feature extraction
 │   ├── prepare_dataset.py          # ML-5: Cell-wise partitioning & standard scaling
+│   ├── cross_validate.py           # ML-5b: Leave-one-cell-out model & feature selection
 │   ├── train_model.py              # ML-6: TFLM-compatible neural network training
-│   ├── evaluate_model.py           # ML-7: Unseen test battery holdout benchmarking
+│   ├── evaluate_model.py           # ML-7: Unseen test cell benchmarking
 │   ├── quantize_model.py           # ML-8: Post-training INT8 quantization & verification
 │   └── export_c_header.py          # ML-9: Static C array export & SHA-256 parity verification
+├── dashboard/                      # Telemetry dashboard (see the last section)
+├── CHANGES.md                      # What changed in the improved pipeline, with before/after results
 ├── requirements.txt                # Locked dependencies (Python 3.11, TF 2.15, NumPy 1.26)
 ├── verify_env.py                   # Step ML-1 environment sanity checker
 ├── .gitignore                      # Git exclusion rules for large datasets and binaries
@@ -90,11 +85,11 @@ eng-4k-project-ml/
 
 ## 4. Pipeline Execution: Step ML-1 to ML-9
 
-All scripts include automated assertion gates that halt execution if data corruption, numerical instability, or metric threshold violations occur.
+All scripts include assertion gates that halt execution if data corruption, numerical instability, or metric threshold violations occur.
 
 ### Step ML-1: Environment Verification
 
-Validates the Python runtime, ABI-compatible NumPy constraints, and directory architecture.
+Validates the Python runtime, ABI-compatible NumPy constraints, and directory layout.
 
 ```bash
 python verify_env.py
@@ -102,7 +97,7 @@ python verify_env.py
 
 ### Step ML-2: Dataset Ingestion
 
-Streams the official NASA Ames PCoE Battery Aging Dataset archive over HTTPS, extracts target cells (B0005, B0006, B0007, B0018), and asserts MATLAB struct integrity.
+Downloads the official NASA Ames PCoE Battery Aging Dataset archive over HTTPS, extracts the target cells (B0005, B0006, B0007, B0018), and checks MATLAB struct integrity.
 
 ```bash
 python src/download_data.py
@@ -110,7 +105,7 @@ python src/download_data.py
 
 ### Step ML-3: Cycle Isolation & Ground-Truth Labelling
 
-Filters out charge and impedance tests, extracts 636 constant-current discharge cycles, and compiles ground-truth State-of-Health labels based on nominal rated cell capacity ($C_{\text{rated}} = 2.0\text{ Ah}$).
+Filters out charge and impedance tests, extracts 636 constant-current discharge cycles, and computes ground-truth SoH labels from the rated cell capacity ($C_{\text{rated}} = 2.0\text{ Ah}$).
 
 ```bash
 python src/parse_raw_data.py
@@ -118,23 +113,31 @@ python src/parse_raw_data.py
 
 ### Step ML-4: Feature Extraction
 
-Synchronizes time vectors to the exact moment the load engages ($\vert{}I\vert{} \ge 1.5\text{ A}$) and computes the 3 physical degradation features.
+Synchronizes each cycle to the moment the load engages ($\vert{}I\vert{} \ge 1.5\text{ A}$) and computes the candidate degradation features. Raises an error if a discharge is shorter than the 1000 s window.
 
 ```bash
 python src/extract_features.py
 ```
 
-### Step ML-5: Dataset Normalization & Group Partitioning
+### Step ML-5: Normalization & Cell-wise Partitioning
 
-Splits by physical cell. All 504 cycles of B0005, B0006 and B0007 are used for training; Cell B0018 (132 cycles) is the untouched test battery. Model and feature selection is done separately by leave-one-cell-out cross-validation (`python src/cross_validate.py`), so no cycles from one cell leak into validation. Exports `models/c_headers/scaling_params.h`.
+Splits by physical cell. All 504 cycles of B0005, B0006 and B0007 are used for training; cell B0018 (132 cycles) is the untouched test cell. The scaler is fitted on the training cells only. Exports `models/c_headers/scaling_params.h`.
 
 ```bash
 python src/prepare_dataset.py
 ```
 
+### Step ML-5b: Leave-One-Cell-Out Cross-Validation
+
+Compares 8 configurations (linear regression and MLP, each with 4 feature sets) by training on two training cells and testing on the third, over several seeds. The configuration with the lowest worst-cell MAE is selected. B0018 is never used here. Writes `models/cv_results.csv`.
+
+```bash
+python src/cross_validate.py
+```
+
 ### Step ML-6: Model Architecture & Training
 
-Trains an ultra-compact MLP (`Input(2)` $\to$ `Dense(16, ReLU)` $\to$ `Dense(8, ReLU)` $\to$ `Dense(1, Linear)`) with L2 regularization and Early Stopping.
+Trains an ultra-compact MLP (`Input(2)` $\to$ `Dense(16, ReLU)` $\to$ `Dense(8, ReLU)` $\to$ `Dense(1, Linear)`) with L2 regularization for a fixed 150 epochs (chosen by cross-validation) on all three training cells. TensorFlow op determinism is enabled, so results are reproducible across machines.
 
 ```bash
 python src/train_model.py
@@ -142,7 +145,7 @@ python src/train_model.py
 
 ### Step ML-7: Unseen Cell Benchmarking
 
-Performs zero-shot validation against Cell B0018, measuring generalization on an independent physical cell.
+Evaluates the exported model on cell B0018, and also reports the MAE spread over 10 training seeds and a linear baseline trained on the same data.
 
 ```bash
 python src/evaluate_model.py
@@ -150,7 +153,7 @@ python src/evaluate_model.py
 
 ### Step ML-8: Post-Training INT8 Quantization
 
-Applies full integer quantization to input tensors, weights, and activations using representative calibration data. Enforces an assertion check that quantization drift does not exceed $0.50\%\text{ SoH}$. Exports `models/c_headers/quantization_params.h`.
+Applies full integer quantization to inputs, weights and activations, calibrated on the training data. Checks that quantization drift stays below $0.50\%\text{ SoH}$ and reports any inputs that saturate the INT8 range. Exports `models/c_headers/quantization_params.h`.
 
 ```bash
 python src/quantize_model.py
@@ -158,7 +161,7 @@ python src/quantize_model.py
 
 ### Step ML-9: Static C Header Export
 
-Converts the `.tflite` flatbuffer into an aligned C byte array header (`models/c_headers/model_data.h`) with 4-byte boundary alignment (`DATA_ALIGN(4)`), as required by TFLM for the model buffer and to avoid unaligned accesses on the ESP32-S3. Re-verifies SHA-256 bit parity and runtime deserialization.
+Converts the `.tflite` flatbuffer into an aligned C byte array (`models/c_headers/model_data.h`) with 4-byte alignment (`DATA_ALIGN(4)`), as TFLM requires for the model buffer. The arrays are `static const`, so the header can be included safely. Re-verifies SHA-256 bit parity and runtime deserialization.
 
 ```bash
 python src/export_c_header.py
@@ -166,71 +169,11 @@ python src/export_c_header.py
 
 ---
 
-## 5. Firmware Integration Guide (ESP32-S3, ESP-IDF)
-
-The target is the ESP32-S3-WROOM-1 on Board 2; early firmware work uses an ESP32-S3-DevKitC-1. Add Espressif's `esp-tflite-micro` component (TFLM with ESP-NN optimized kernels) to the ESP-IDF project, and copy the contents of `models/c_headers/` into the project's include path. The sketch below shows the intended call sequence; it has not yet been run on hardware (Step ML-10).
-
-```c
-#include "scaling_params.h"
-#include "quantization_params.h"
-#include "model_data.h"
-#include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-
-// 1. Tensor arena in internal SRAM (not PSRAM); ~3.5 KB estimated, confirm in ML-10
-constexpr int kTensorArenaSize = 4096;
-alignas(16) static uint8_t tensor_arena[kTensorArenaSize];
-static tflite::MicroInterpreter* interpreter = nullptr;
-
-<<<<<<< HEAD
-void run_battery_soh_inference(float v_sag, float temp_rise) {
-    // 2. Normalize raw physical ADC inputs using Step ML-5 constants
-    float raw_inputs[NUM_FEATURES] = { v_sag, temp_rise };
-=======
-void soh_model_init(void) {
-    const tflite::Model* model = tflite::GetModel(g_soh_model_data);
-    // The INT8 MLP uses fully connected layers with fused ReLU
-    static tflite::MicroMutableOpResolver<1> resolver;
-    resolver.AddFullyConnected();
-    static tflite::MicroInterpreter static_interpreter(model, resolver, tensor_arena, kTensorArenaSize);
-    interpreter = &static_interpreter;
-    interpreter->AllocateTensors();   // check status; arena_used_bytes() gives the real arena size
-}
-
-// Runs on the telemetry/diagnostics core only; its output is advisory and never feeds the safety loop
-float run_battery_soh_inference(float v_ohmic, float v_sag, float temp_rise) {
-    // 2. Normalize raw physical inputs using Step ML-5 constants
-    float raw_inputs[NUM_FEATURES] = { v_ohmic, v_sag, temp_rise };
->>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
-    float normalized_inputs[NUM_FEATURES];
-    normalize_features(raw_inputs, normalized_inputs);
-
-    // 3. Quantize to INT8 and load the input tensor
-    TfLiteTensor* input_tensor = interpreter->input(0);
-    for (int i = 0; i < NUM_FEATURES; i++) {
-        input_tensor->data.int8[i] = quantize_input(normalized_inputs[i]);
-    }
-
-    // 4. Run inference
-    if (interpreter->Invoke() != kTfLiteOk) {
-        return -1.0f; // invalid estimate
-    }
-
-    // 5. Dequantize the output back to SoH (%)
-    return dequantize_output(interpreter->output(0)->data.int8[0]);
-}
-```
-
-If `AllocateTensors()` reports a missing operator, add it to the resolver (the converter log lists the operators in the model).
-
----
-
-## 6. How to Reproduce from Scratch
+## 5. How to Reproduce from Scratch
 
 ### Prerequisites
 
-* macOS (Apple Silicon M-Series supported) or Linux
+* macOS (Apple Silicon supported) or Linux
 * Python 3.11.9
 * Git
 
@@ -241,15 +184,15 @@ If `AllocateTensors()` reports a missing operator, add it to the resolver (the c
 git clone https://github.com/NRhaman2000/eng-4k-project-ml.git
 cd eng-4k-project-ml
 
-# 2. Configure Python 3.11 Virtual Environment
+# 2. Create a Python 3.11 virtual environment
 python3.11 -m venv .venv
 source .venv/bin/activate
 
-# 3. Install Locked Dependencies
+# 3. Install locked dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 4. Execute Full Pipeline in Sequence
+# 4. Run the full pipeline in order
 python verify_env.py
 python src/download_data.py
 python src/parse_raw_data.py
@@ -258,19 +201,18 @@ python src/prepare_dataset.py
 python src/cross_validate.py
 python src/train_model.py
 python src/evaluate_model.py
-<<<<<<< HEAD
-python src/quantize_model.p
-=======
 python src/quantize_model.py
 python src/export_c_header.py
 ```
 
 ---
 
-## 7. Next Steps: Hardware Deployment (Step ML-10)
+## 6. Next Steps: Hardware Deployment (Step ML-10, not started)
 
-* **Target Hardware:** ESP32-S3-DevKitC-1 (early firmware), then the ESP32-S3-WROOM-1 on Board 2.
-* **Task:** Integrate `models/c_headers/` into an ESP-IDF project with `esp-tflite-micro` (ESP-NN kernels), then measure inference latency (`esp_timer_get_time()` around `Invoke()`, target < 5 ms), the actual tensor arena size (`arena_used_bytes()`, target < 10 KB), and CPU load on the diagnostics core, confirming that the 1 kHz safety loop on the other core is unaffected.
+* **Target hardware:** ESP32-S3-DevKitC-1 for early testing, then the ESP32-S3-WROOM-1 on Board 2.
+* **Task:** integrate the headers in `models/c_headers/` into an ESP-IDF project with `esp-tflite-micro`, then measure inference latency, the real tensor arena size, and CPU load on the diagnostics core.
+* **Measurement requirement:** the firmware must reproduce the diagnostic discharge the model was trained on (rest, then about 2 A constant current for at least 1000 s, per cell) to produce valid inputs.
+* **Safety boundary:** the SoH estimate is advisory only. It will not be used in any protection or shutdown decision.
 
 ---
 
@@ -281,4 +223,3 @@ The `dashboard/` folder contains the receive-only host software for the BMS test
 - **Setup, architecture, usage and testing:** see [`dashboard/README.md`](dashboard/README.md).
 - **Current status:** the dashboard runs on synthetic (mock) telemetry and supports a provisional serial interface (JSON frames over UART at 115,200 baud, see [`dashboard/tools/README.md`](dashboard/tools/README.md)), which has been tested only with a pseudo-terminal loopback and synthetic data.
 - **Physical ESP32-S3 integration has not yet been verified.** The serial packet format is still provisional until it is confirmed with the firmware team.
->>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
