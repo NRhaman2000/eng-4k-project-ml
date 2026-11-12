@@ -1,17 +1,22 @@
 # Fault-Tolerant Active BMS: Embedded TinyML State-of-Health (SoH) Inference Pipeline
 
-An ultra-lightweight, deterministic Machine Learning inference pipeline designed for bare-metal microcontroller deployment (ARM Cortex-M4 / Xtensa LX7). This subsystem monitors battery degradation and estimates State-of-Health (SoH) on a 4-cell series (4S) Lithium-ion battery pack (~14.8V nominal) using the NASA Ames Prognostics Center of Excellence (PCoE) battery aging cohort.
+An ultra-lightweight, deterministic Machine Learning inference pipeline designed for deployment on the ESP32-S3-WROOM-1 microcontroller (dual-core Xtensa LX7) on the project's control board (Board 2). This subsystem monitors battery degradation and estimates State-of-Health (SoH) on a 4-cell series (4S) Lithium-ion battery pack (~14.8V nominal) using the NASA Ames Prognostics Center of Excellence (PCoE) battery aging cohort.
 
 ---
 
 ## 1. Project Overview & System Architecture
 
+<<<<<<< HEAD
 This repository hosts the offline machine learning development track (Steps ML-1 through ML-9) of the capstone project. The pipeline ingests raw laboratory cycling logs, extracts low-compute physical degradation features, trains a microcontroller-compatible Multi-Layer Perceptron (MLP) (see CHANGES.md for the improved validation method), applies full integer post-training quantization (INT8), and compiles the model into memory-aligned C header files for on-device execution without an operating system.
+=======
+This repository hosts the offline machine learning development track (Steps ML-1 through ML-9) of the capstone project. The pipeline ingests raw laboratory cycling logs, extracts low-compute physical degradation features, trains a microcontroller-compatible Multi-Layer Perceptron (MLP), applies full integer post-training quantization (INT8), and compiles the model into memory-aligned C header files for on-device execution with TensorFlow Lite for Microcontrollers (TFLM).
+>>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
 
 ### Performance & Hardware Footprint Scorecard
 
 | Metric | Target Specification | Achieved Result | Status |
 | --- | --- | --- | --- |
+<<<<<<< HEAD
 | **Model Parameters** | $< 1,000$ weights | **193 parameters** | **PASSED** |
 | **Compiled Flash Footprint** | $< 10.0\text{ KB}$ | **2,704 bytes (2.64 KB)** | **PASSED** |
 | **Runtime SRAM Tensor Arena** | $< 10.0\text{ KB}$ | **$\approx 3.5\text{ KB}$** | **PASSED** |
@@ -20,6 +25,16 @@ This repository hosts the offline machine learning development track (Steps ML-1
 | **Linear baseline on B0018** | reference | 2.30% | — |
 | **Quantization Parity Drift (Float32 vs. INT8)** | $< 0.50\%\text{ SoH}$ | **0.124% SoH** | **PASSED** |
 | **Target Controller Compatibility** | Ultra-low power MCU | STM32G474RE / ESP32-S3 | **PASSED**<br> |
+=======
+| **Model Parameters** | $< 1,000$ weights | **209 parameters** | **PASSED** |
+| **Compiled Flash Footprint** | $< 10.0\text{ KB}$ | **2,720 bytes (2.66 KB)** | **PASSED** |
+| **Runtime SRAM Tensor Arena** | $< 10.0\text{ KB}$ | **$\approx 3.5\text{ KB}$ (estimated)** | Confirm on target (ML-10) |
+| **Holdout Test MAE (Unseen Cell B0018)** | $< 4.00\%\text{ SoH}$ | **$3.69\%\text{ SoH}$** | **PASSED** |
+| **Quantization Parity Drift (Float32 vs. INT8)** | $< 0.50\%\text{ SoH}$ | **$0.306\%\text{ SoH}$** | **PASSED** |
+| **Target Controller** | Embedded MCU, TFLM-compatible | ESP32-S3-WROOM-1 (TFLM + ESP-NN) | On-target profiling scheduled (ML-10) |
+
+> **Controller note:** the STM32G474RE was evaluated as an alternative; the ESP32-S3-WROOM-1 was selected for Board 2 (see Trade Study C in Progress Report 1).
+>>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
 
 ---
 
@@ -69,7 +84,6 @@ eng-4k-project-ml/
 ├── verify_env.py                   # Step ML-1 environment sanity checker
 ├── .gitignore                      # Git exclusion rules for large datasets and binaries
 └── README.md
-
 ```
 
 ---
@@ -84,7 +98,6 @@ Validates the Python runtime, ABI-compatible NumPy constraints, and directory ar
 
 ```bash
 python verify_env.py
-
 ```
 
 ### Step ML-2: Dataset Ingestion
@@ -93,7 +106,6 @@ Streams the official NASA Ames PCoE Battery Aging Dataset archive over HTTPS, ex
 
 ```bash
 python src/download_data.py
-
 ```
 
 ### Step ML-3: Cycle Isolation & Ground-Truth Labelling
@@ -102,7 +114,6 @@ Filters out charge and impedance tests, extracts 636 constant-current discharge 
 
 ```bash
 python src/parse_raw_data.py
-
 ```
 
 ### Step ML-4: Feature Extraction
@@ -111,7 +122,6 @@ Synchronizes time vectors to the exact moment the load engages ($\vert{}I\vert{}
 
 ```bash
 python src/extract_features.py
-
 ```
 
 ### Step ML-5: Dataset Normalization & Group Partitioning
@@ -120,7 +130,6 @@ Splits by physical cell. All 504 cycles of B0005, B0006 and B0007 are used for t
 
 ```bash
 python src/prepare_dataset.py
-
 ```
 
 ### Step ML-6: Model Architecture & Training
@@ -129,7 +138,6 @@ Trains an ultra-compact MLP (`Input(2)` $\to$ `Dense(16, ReLU)` $\to$ `Dense(8, 
 
 ```bash
 python src/train_model.py
-
 ```
 
 ### Step ML-7: Unseen Cell Benchmarking
@@ -138,7 +146,6 @@ Performs zero-shot validation against Cell B0018, measuring generalization on an
 
 ```bash
 python src/evaluate_model.py
-
 ```
 
 ### Step ML-8: Post-Training INT8 Quantization
@@ -147,65 +154,75 @@ Applies full integer quantization to input tensors, weights, and activations usi
 
 ```bash
 python src/quantize_model.py
-
 ```
 
 ### Step ML-9: Static C Header Export
 
-Converts the `.tflite` flatbuffer into an aligned C byte array header (`models/c_headers/model_data.h`) with 4-byte boundary alignment (`DATA_ALIGN(4)`) to prevent bus fault exceptions on ARM Cortex-M hardware. Re-verifies SHA-256 bit parity and runtime deserialization.
+Converts the `.tflite` flatbuffer into an aligned C byte array header (`models/c_headers/model_data.h`) with 4-byte boundary alignment (`DATA_ALIGN(4)`), as required by TFLM for the model buffer and to avoid unaligned accesses on the ESP32-S3. Re-verifies SHA-256 bit parity and runtime deserialization.
 
 ```bash
 python src/export_c_header.py
-
 ```
 
 ---
 
-## 5. Firmware Integration Guide (C/C++)
+## 5. Firmware Integration Guide (ESP32-S3, ESP-IDF)
 
-To run inference on an embedded target (such as an STM32 Nucleo-G474RE or ESP32-S3), copy the contents of `models/c_headers/` into your microcontroller project's include path.
+The target is the ESP32-S3-WROOM-1 on Board 2; early firmware work uses an ESP32-S3-DevKitC-1. Add Espressif's `esp-tflite-micro` component (TFLM with ESP-NN optimized kernels) to the ESP-IDF project, and copy the contents of `models/c_headers/` into the project's include path. The sketch below shows the intended call sequence; it has not yet been run on hardware (Step ML-10).
 
 ```c
 #include "scaling_params.h"
 #include "quantization_params.h"
 #include "model_data.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
-// 1. Allocate Tensor Arena in internal SRAM (< 4 KB)
+// 1. Tensor arena in internal SRAM (not PSRAM); ~3.5 KB estimated, confirm in ML-10
 constexpr int kTensorArenaSize = 4096;
-uint8_t tensor_arena[kTensorArenaSize];
+alignas(16) static uint8_t tensor_arena[kTensorArenaSize];
+static tflite::MicroInterpreter* interpreter = nullptr;
 
+<<<<<<< HEAD
 void run_battery_soh_inference(float v_sag, float temp_rise) {
     // 2. Normalize raw physical ADC inputs using Step ML-5 constants
     float raw_inputs[NUM_FEATURES] = { v_sag, temp_rise };
+=======
+void soh_model_init(void) {
+    const tflite::Model* model = tflite::GetModel(g_soh_model_data);
+    // The INT8 MLP uses fully connected layers with fused ReLU
+    static tflite::MicroMutableOpResolver<1> resolver;
+    resolver.AddFullyConnected();
+    static tflite::MicroInterpreter static_interpreter(model, resolver, tensor_arena, kTensorArenaSize);
+    interpreter = &static_interpreter;
+    interpreter->AllocateTensors();   // check status; arena_used_bytes() gives the real arena size
+}
+
+// Runs on the telemetry/diagnostics core only; its output is advisory and never feeds the safety loop
+float run_battery_soh_inference(float v_ohmic, float v_sag, float temp_rise) {
+    // 2. Normalize raw physical inputs using Step ML-5 constants
+    float raw_inputs[NUM_FEATURES] = { v_ohmic, v_sag, temp_rise };
+>>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
     float normalized_inputs[NUM_FEATURES];
     normalize_features(raw_inputs, normalized_inputs);
 
-    // 3. Quantize float features to signed INT8
-    int8_t quantized_inputs[NUM_FEATURES];
-    for (int i = 0; i < NUM_FEATURES; i++) {
-        quantized_inputs[i] = quantize_input(normalized_inputs[i]);
-    }
-
-    // 4. Load input tensor into TFLM interpreter
+    // 3. Quantize to INT8 and load the input tensor
     TfLiteTensor* input_tensor = interpreter->input(0);
     for (int i = 0; i < NUM_FEATURES; i++) {
-        input_tensor->data.int8[i] = quantized_inputs[i];
+        input_tensor->data.int8[i] = quantize_input(normalized_inputs[i]);
     }
 
-    // 5. Execute on-device neural network inference
-    TfLiteStatus invoke_status = interpreter->Invoke();
-    if (invoke_status != kTfLiteOk) {
-        return; // Handle execution error
+    // 4. Run inference
+    if (interpreter->Invoke() != kTfLiteOk) {
+        return -1.0f; // invalid estimate
     }
 
-    // 6. Dequantize model output back to physical SoH (%)
-    int8_t raw_model_output = interpreter->output(0)->data.int8[0];
-    float estimated_soh_percent = dequantize_output(raw_model_output);
+    // 5. Dequantize the output back to SoH (%)
+    return dequantize_output(interpreter->output(0)->data.int8[0]);
 }
-
 ```
+
+If `AllocateTensors()` reports a missing operator, add it to the resolver (the converter log lists the operators in the model).
 
 ---
 
@@ -221,7 +238,7 @@ void run_battery_soh_inference(float v_sag, float temp_rise) {
 
 ```bash
 # 1. Clone the repository
-git clone <YOUR_GITHUB_REPO_URL>
+git clone https://github.com/NRhaman2000/eng-4k-project-ml.git
 cd eng-4k-project-ml
 
 # 2. Configure Python 3.11 Virtual Environment
@@ -241,4 +258,27 @@ python src/prepare_dataset.py
 python src/cross_validate.py
 python src/train_model.py
 python src/evaluate_model.py
+<<<<<<< HEAD
 python src/quantize_model.p
+=======
+python src/quantize_model.py
+python src/export_c_header.py
+```
+
+---
+
+## 7. Next Steps: Hardware Deployment (Step ML-10)
+
+* **Target Hardware:** ESP32-S3-DevKitC-1 (early firmware), then the ESP32-S3-WROOM-1 on Board 2.
+* **Task:** Integrate `models/c_headers/` into an ESP-IDF project with `esp-tflite-micro` (ESP-NN kernels), then measure inference latency (`esp_timer_get_time()` around `Invoke()`, target < 5 ms), the actual tensor arena size (`arena_used_bytes()`, target < 10 KB), and CPU load on the diagnostics core, confirming that the 1 kHz safety loop on the other core is unaffected.
+
+---
+
+## Telemetry Dashboard (Software Engineering)
+
+The `dashboard/` folder contains the receive-only host software for the BMS testbed: a Python FastAPI backend that ingests telemetry, validates it and logs it to SQLite, and a React web dashboard that shows live cell voltages, temperatures, pack voltage and current, balancing, fault and isolation state, history, and CSV export. The dashboard only monitors. It sends no commands to the MCU, and all protection decisions remain in the ESP32-S3 firmware.
+
+- **Setup, architecture, usage and testing:** see [`dashboard/README.md`](dashboard/README.md).
+- **Current status:** the dashboard runs on synthetic (mock) telemetry and supports a provisional serial interface (JSON frames over UART at 115,200 baud, see [`dashboard/tools/README.md`](dashboard/tools/README.md)), which has been tested only with a pseudo-terminal loopback and synthetic data.
+- **Physical ESP32-S3 integration has not yet been verified.** The serial packet format is still provisional until it is confirmed with the firmware team.
+>>>>>>> 366aac6b5549396f301e933f496a4c0ad8c17061
