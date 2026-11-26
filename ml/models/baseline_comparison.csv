@@ -1,0 +1,13 @@
+method,params,cv_mean_mae,cv_worst_fold_mae,cv_B0005,cv_B0006,cv_B0007,B0018_mae,B0018_max_err
+MLP 2-16-8-1 (ours),193.0,2.018,2.27,2.27,2.229,1.555,2.42,4.047
+"Linear, sag only",2.0,2.259,2.884,2.426,2.884,1.467,1.824,3.611
+Linear (2 feat),3.0,2.58,3.408,2.682,3.408,1.65,2.071,3.785
+Ridge alpha=1 (2 feat),3.0,2.583,3.418,2.634,3.418,1.697,2.158,3.837
+Lasso alpha=0.05 (2 feat),3.0,2.517,3.331,2.548,3.331,1.671,2.046,3.744
+Huber (2 feat),3.0,2.59,3.467,2.61,3.467,1.693,2.093,3.873
+Polynomial deg 2 (2 feat),7.0,2.869,4.628,2.137,4.628,1.843,2.589,3.81
+"Linear (3 feat, with ohmic)",4.0,4.111,7.769,2.525,7.769,2.04,2.068,3.781
+"Coulomb count, full discharge (all 4 cells, no fitting)",,,,,,,0.653,1.401
+"  same, current sensor +20 mA offset",,,,,,,1.519,
+"  same, current sensor +1 % gain error",,,,,,,1.45,
+"Coulomb count, partial 3.9 -> 3.5 V + linear map",,3.214,5.197,2.93,5.197,1.516,1.135,3.966
